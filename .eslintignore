@@ -1,0 +1,4 @@
+commitlint.config.js
+*.config.js
+.husky/
+dist/
