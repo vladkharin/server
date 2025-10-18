@@ -2,3 +2,4 @@ commitlint.config.js
 *.config.js
 .husky/
 dist/
+prisma.config.ts

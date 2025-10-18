@@ -1,18 +1,26 @@
 import { IsEmail, IsNotEmpty, IsString } from 'class-validator';
 
-export class CreateUserDto {
-  @IsEmail()
+export interface CreateUserInput {
   email: string;
+  password: string;
+  name: string;
+  surname: string;
+  username: string;
+}
+
+export class CreateUserDto implements CreateUserDto {
+  @IsEmail()
+  email!: string;
 
   @IsNotEmpty()
-  password: string;
+  password!: string;
 
   @IsString()
-  name: string;
+  name!: string;
 
   @IsString()
-  surname: string;
+  surname!: string;
 
   @IsString()
-  username: string;
+  username!: string;
 }

@@ -1,0 +1,16 @@
+model User {
+  createdAt DateTime @default(now())
+  id        Int      @id @default(autoincrement())
+  name      String
+  surname   String
+  username  String   @unique
+  email     String   @unique
+  password  String
+
+  ownedServers  Server[] // серверы, где пользователь — владелец
+  serverMembers ServerMember[] // участия в серверах
+  userRoles     UserRole[]
+  Message       Message[]
+
+  @@map("users")
+}

@@ -1,4 +1,11 @@
-import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  HttpCode,
+  HttpStatus,
+  Post,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { signInDto } from './dto/auth.dto';
 
@@ -7,9 +14,17 @@ export class AuthController {
   constructor(private authService: AuthService) {}
 
   @HttpCode(HttpStatus.OK)
-  @Post()
-  signIn(@Body() req: signInDto) {
-    console.log(req.password);
-    return this.authService.validateUser(req.username, req.password);
+  @Post('user')
+  async signIn(@Body() req: signInDto) {
+    const user = await this.authService.validateUser(
+      req.username,
+      req.password,
+    );
+
+    if (!user) {
+      throw new UnauthorizedException('Неверные учетные данные');
+    }
+
+    return this.authService.login(user.username, user.id);
   }
 }

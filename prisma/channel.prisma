@@ -1,0 +1,133 @@
+model Server {
+  id        Int      @id @default(autoincrement())
+  name      String
+  ownerId   Int
+  createdAt DateTime @default(now())
+
+  owner    User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  members  ServerMember[]
+  channels Channel[]
+  roles    Role[]
+  UserRole UserRole[]
+}
+
+model ServerMember {
+  id       Int      @id @default(autoincrement())
+  userId   Int
+  serverId Int
+  joinedAt DateTime @default(now())
+
+  user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  server Server     @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  roles  UserRole[]
+
+  @@unique([userId, serverId])
+}
+
+model Role {
+  id        Int     @id @default(autoincrement())
+  name      String
+  color     String?
+  serverId  Int
+  isDefault Boolean @default(false)
+
+  server      Server           @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  permissions RolePermission[]
+  users       UserRole[]
+}
+
+model RolePermission {
+  id         Int        @id @default(autoincrement())
+  roleId     Int
+  permission Permission
+
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permission])
+}
+
+enum Permission {
+  SEND_MESSAGES
+  MANAGE_MESSAGES
+  MANAGE_CHANNELS
+  CONNECT_TO_VOICE
+  KICK_MEMBERS
+  BAN_MEMBERS
+}
+
+enum ChannelType {
+  TEXT
+  VOICE
+  ANNOUNCEMENT
+}
+
+model Channel {
+  id        Int         @id @default(autoincrement())
+  name      String
+  type      ChannelType
+  serverId  Int
+  createdAt DateTime    @default(now())
+
+  server    Server                      @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  messages  Message[]                   @relation("ChannelMessages")
+  overrides ChannelPermissionOverride[]
+}
+
+model ChannelPermissionOverride {
+  id         Int    @id @default(autoincrement())
+  channelId  Int
+  targetId   Int // roleId или userId
+  targetType String // "ROLE" или "USER"
+
+  channel Channel                  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  allows  ChannelPermissionAllow[]
+  denies  ChannelPermissionDeny[]
+
+  @@unique([channelId, targetId, targetType])
+}
+
+model ChannelPermissionAllow {
+  id         Int        @id @default(autoincrement())
+  overrideId Int
+  permission Permission
+
+  override ChannelPermissionOverride @relation(fields: [overrideId], references: [id], onDelete: Cascade)
+
+  @@unique([overrideId, permission])
+}
+
+model ChannelPermissionDeny {
+  id         Int        @id @default(autoincrement())
+  overrideId Int
+  permission Permission
+
+  override ChannelPermissionOverride @relation(fields: [overrideId], references: [id], onDelete: Cascade)
+
+  @@unique([overrideId, permission])
+}
+
+model Message {
+  id        Int      @id @default(autoincrement())
+  content   String
+  createdAt DateTime @default(now())
+  senderId  Int
+  channelId Int
+
+  sender  User    @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  channel Channel @relation("ChannelMessages", fields: [channelId], references: [id], onDelete: Cascade)
+}
+
+model UserRole {
+  id       Int @id @default(autoincrement())
+  userId   Int
+  roleId   Int
+  serverId Int
+
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           Role          @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  server         Server        @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  ServerMember   ServerMember? @relation(fields: [serverMemberId], references: [id])
+  serverMemberId Int?
+
+  @@unique([userId, roleId, serverId])
+}

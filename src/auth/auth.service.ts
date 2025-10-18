@@ -1,7 +1,14 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { UserService } from '../user/user.service';
 import { JwtService } from '@nestjs/jwt';
-import * as bcrypt from 'bcrypt';
+import * as bcrypt from 'bcryptjs';
+import { User } from '@prisma/client';
+import { ConfigService } from '@nestjs/config';
+
+interface JwtPayload {
+  username: string;
+  sub: number; // ← убедитесь, что это совпадает с типом id в вашей БД
+}
 
 @Injectable()
 export class AuthService {
@@ -10,20 +17,56 @@ export class AuthService {
     private jwtService: JwtService,
   ) {}
 
-  async validateUser(username: string, password: string): Promise<any> {
+  async validateUser(
+    username: string,
+    password: string,
+  ): Promise<Omit<User, 'password'> | undefined> {
     const user = await this.userService.findOne(username);
-    const isMatch = await bcrypt.compare(password, user?.password);
-    if (!isMatch) {
-      throw new UnauthorizedException();
+
+    if (!user || !user.password) return undefined;
+
+    const isMatch: boolean = await bcrypt.compare(password, user.password);
+
+    if (!isMatch) return undefined;
+
+    const { password: _, ...result } = user; // исключаем password
+
+    return result;
+  }
+
+  // Генерация JWT — отдельный метод
+  async login(username: string, id: number) {
+    const payload = { username: username, sub: id };
+
+    return {
+      id: id,
+      access_token: await this.jwtService.signAsync(payload),
+    };
+  }
+
+  async validateToken(token: string): Promise<Omit<User, 'password'>> {
+    if (!process.env.JWT_SECRET) {
+      throw new UnauthorizedException('JWT secret is not configured');
     }
 
-    console.log(user);
+    let payload: JwtPayload;
+    try {
+      // 🔹 3. Явно типизируем результат verifyAsync
+      payload = await this.jwtService.verifyAsync<JwtPayload>(token, {
+        secret: process.env.JWT_SECRET,
+      });
+    } catch {
+      throw new UnauthorizedException('Invalid token');
+    }
 
-    const payload = { sub: user?.id, username: user?.username };
+    // 🔹 4. Получаем пользователя
+    const user = await this.userService.findById(payload.sub);
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
 
-    return JSON.stringify({
-      id: user?.id,
-      access_token: await this.jwtService.signAsync(payload),
-    });
+    // 🔹 5. Безопасная деструктуризация (user точно не null)
+    const { password: _, ...result } = user;
+    return result;
   }
 }
