@@ -3,23 +3,18 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Копируем package.json и package-lock.json для кэширования зависимостей
+# Копируем package.json и package-lock.json
 COPY package*.json ./
 
-# Устанавливаем зависимости (без dev)
-RUN npm install --omit=dev
+# Устанавливаем ВСЕ зависимости (включая dev) — необходимо для компиляции TypeScript
+RUN npm ci
 
 # Копируем весь исходный код
 COPY . .
 
 # Генерируем Prisma Client и собираем NestJS приложение
-RUN npx prisma generate --schema=./prisma && npx nest build
-
-# (Опционально) Проверяем структуру — полезно при отладке
-RUN ls -la /app/dist
-RUN ls -la /app/node_modules/@prisma/client/
-RUN ls -la /app/node_modules/.prisma/client/
-
+RUN npx prisma generate --schema=./prisma && \
+    npx nest build
 
 # ========= ФИНАЛЬНЫЙ ОБРАЗ (легковесный для запуска) =========
 FROM node:20-alpine
@@ -29,9 +24,11 @@ RUN apk add --no-cache postgresql-client
 
 WORKDIR /app
 
-COPY --from=builder /app/package*.json ./
-RUN npm install --omit=dev --production
+# Устанавливаем ТОЛЬКО production-зависимости
+COPY package*.json ./
+RUN npm ci --only=production
 
+# Копируем собранный код и необходимые файлы Prisma
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma/client ./node_modules/@prisma/client
@@ -39,6 +36,6 @@ COPY --from=builder /app/node_modules/@prisma/client ./node_modules/@prisma/clie
 # 🔥 Копируем схему Prisma — без неё миграции не работают!
 COPY --from=builder /app/prisma ./prisma
 
-EXPOSE 3000
+EXPOSE 3001
 
-CMD ["node", "dist/src/main.js"]
+CMD ["node", "dist/main.js"]
