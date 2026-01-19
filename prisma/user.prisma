@@ -7,10 +7,12 @@ model User {
   email     String   @unique
   password  String
 
-  ownedServers  Server[] // серверы, где пользователь — владелец
-  serverMembers ServerMember[] // участия в серверах
-  userRoles     UserRole[]
-  Message       Message[]
+  // Все участия пользователя в чатах (личных и групповых)
+  conversationMemberships ConversationMember[]
+  ownedConversations      Conversation[] // все чаты, где пользователь — владелец
+
+  // Отправленные сообщения (для аналитики или поиска)
+  sentMessages Message[] @relation("SentMessages")
 
   @@map("users")
 }

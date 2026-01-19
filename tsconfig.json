@@ -20,5 +20,9 @@
     "strict": true,
     "esModuleInterop": true
   },
-  "include": ["src/**/*", "src/prisma.service.ts"]
+  "include": [
+    "src/**/*",
+    "src/prisma/prisma.service.ts",
+    "src/privateChat/.controller.ts"
+  ]
 }

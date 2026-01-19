@@ -23,6 +23,9 @@ export class AuthService {
   ): Promise<Omit<User, 'password'> | undefined> {
     const user = await this.userService.findOne(username);
 
+    console.log(user);
+    console.log(username, password);
+
     if (!user || !user.password) return undefined;
 
     const isMatch: boolean = await bcrypt.compare(password, user.password);

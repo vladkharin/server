@@ -1,0 +1,51 @@
+model Conversation {
+    id        Int      @id @default(autoincrement())
+    type      ConvType @default(DIRECT) // DIRECT, GROUP, SERVER_CHANNEL
+    name      String? // null для DIRECT, обязательно для GROUP/SERVER
+    avatar    String? // URL аватара чата
+    ownerId   Int? // только для GROUP/SERVER (создатель)
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    // Для DIRECT: хэш вида "minId-maxId" → гарантирует уникальность пары
+    dmHash String? @unique
+
+    // Связи
+    owner    User?                @relation(fields: [ownerId], references: [id])
+    members  ConversationMember[]
+    messages Message[]
+}
+
+// =============== УЧАСТНИКИ ЧАТА ===============
+model ConversationMember {
+    id             Int       @id @default(autoincrement())
+    userId         Int
+    conversationId Int
+    joinedAt       DateTime  @default(now())
+    lastReadAt     DateTime? // для отметки прочитанных сообщений
+    isOwner        Boolean   @default(false)
+    nickname       String? // персональное имя в чате (как в Discord)
+
+    user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+    conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+    @@unique([userId, conversationId])
+}
+
+// =============== СООБЩЕНИЯ ===============
+model Message {
+    id             Int      @id @default(autoincrement())
+    content        String
+    createdAt      DateTime @default(now())
+    senderId       Int
+    conversationId Int
+
+    sender       User         @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+    conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+}
+
+enum ConvType {
+    DIRECT // 1 на 1
+    GROUP // групповой чат
+    SERVER_CHANNEL // канал на сервере (позже)
+}
