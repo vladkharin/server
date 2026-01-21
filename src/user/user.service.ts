@@ -27,4 +27,31 @@ export class UserService {
       where: { id },
     });
   }
+
+  async getUserChats(userId: number) {
+    const PUBLIC_USER_SELECT = {
+      id: true,
+      name: true,
+      surname: true,
+      username: true,
+    } as const;
+
+    // В методе сервиса
+    return this.prisma.conversation.findMany({
+      where: {
+        members: {
+          some: { userId },
+        },
+      },
+      include: {
+        members: {
+          include: {
+            user: {
+              select: PUBLIC_USER_SELECT,
+            },
+          },
+        },
+      },
+    });
+  }
 }

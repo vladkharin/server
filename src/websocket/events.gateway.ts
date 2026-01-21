@@ -15,6 +15,8 @@ import { createDmDto } from 'src/dm/dto/dm.dto';
 import { RequestWithId } from 'src/common/utils/request-with-id.interface';
 import { callService } from 'src/call/call.service';
 import { WebRtcSignalPayload } from 'src/types/types';
+import { Conversation } from '@prisma/client';
+import { UserService } from 'src/user/user.service';
 
 //node -e "console.log(require('ulid').ulid())"
 
@@ -29,6 +31,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private authService: AuthService,
     private serverService: dmService,
     private callService: callService,
+    private userService: UserService,
   ) {}
 
   async handleConnection(client: Socket) {
@@ -55,16 +58,31 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
-  @SubscribeMessage('create.dm')
-  async handleCreateServer(
+  // === Чаты ===
+
+  @SubscribeMessage('dm:create')
+  async handleDmCreate(
     @MessageBody() data: createDmDto & RequestWithId,
     @ConnectedSocket() client: Socket,
   ) {
     return await this.serverService.socketEventCreateServer(client, data);
   }
 
+  @SubscribeMessage('dm:list')
+  async handleDmList(
+    @MessageBody() data: Conversation[] & RequestWithId,
+    @ConnectedSocket() client: Socket,
+  ) {
+    const userId = client.user?.id;
+    if (!userId) {
+      return;
+    }
+
+    return await this.userService.getUserChats(userId);
+  }
+
   // === ЗВОНКИ ===
-  @SubscribeMessage('call_request')
+  @SubscribeMessage('call:request')
   async handleCallRequest(
     @MessageBody() payload: { conversationId: number },
     @ConnectedSocket() client: Socket,
@@ -77,8 +95,8 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     );
   }
 
-  @SubscribeMessage('webrtc_signal')
-  handleWebRtcSignal(
+  @SubscribeMessage('call:signal')
+  handleCallSignal(
     @MessageBody() payload: WebRtcSignalPayload,
     @ConnectedSocket() client: Socket,
   ) {
@@ -90,7 +108,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     );
   }
 
-  @SubscribeMessage('call_accept')
+  @SubscribeMessage('call:accept')
   async handleCallAccept(
     @MessageBody() payload: { conversationId: number },
     @ConnectedSocket() client: Socket,
@@ -103,7 +121,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     );
   }
 
-  @SubscribeMessage('call_end')
+  @SubscribeMessage('call:end')
   async handleCallEnd(
     @MessageBody() payload: { conversationId: number },
     @ConnectedSocket() client: Socket,

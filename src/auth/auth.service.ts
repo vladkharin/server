@@ -3,7 +3,6 @@ import { UserService } from '../user/user.service';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { User } from '@prisma/client';
-import { ConfigService } from '@nestjs/config';
 
 interface JwtPayload {
   username: string;
