@@ -35,6 +35,11 @@ export class callService {
     if (!calleeSocketId)
       return client.emit('call_error', { message: 'User offline' });
 
+    console.log('📞 Caller ID:', callerId);
+    console.log('👥 Participants:', participants);
+    console.log('🎯 Callee ID:', calleeId);
+    console.log('🔌 Callee Socket ID:', calleeSocketId);
+
     server.to(calleeSocketId).emit('incoming_call', {
       from: callerId,
       conversationId: payload.conversationId,

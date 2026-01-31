@@ -46,10 +46,7 @@ export class dmService {
     });
   }
 
-  async socketEventCreateServer(
-    client: Socket,
-    data: createDmDto & RequestWithId,
-  ) {
+  async socketEventDmCreate(client: Socket, data: createDmDto & RequestWithId) {
     // Валидация через class-validator (если используете ValidationPipe)
     const requestId = data.id; // ← берём ID от клиента
 

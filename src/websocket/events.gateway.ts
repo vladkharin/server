@@ -17,6 +17,7 @@ import { callService } from 'src/call/call.service';
 import { WebRtcSignalPayload } from 'src/types/types';
 import { Conversation } from '@prisma/client';
 import { UserService } from 'src/user/user.service';
+import { withAuthAndAck } from 'src/common/utils/withAuthAndAck';
 
 //node -e "console.log(require('ulid').ulid())"
 
@@ -29,7 +30,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   constructor(
     private authService: AuthService,
-    private serverService: dmService,
+    private dmService: dmService,
     private callService: callService,
     private userService: UserService,
   ) {}
@@ -45,6 +46,8 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       client.user = user;
       this.userSockets.set(user.id, client.id);
       console.log(`✅ Пользователь ${user.id} подключён`);
+
+      client.emit('auth:ready');
     } catch (_e) {
       client.disconnect(true);
     }
@@ -65,20 +68,30 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @MessageBody() data: createDmDto & RequestWithId,
     @ConnectedSocket() client: Socket,
   ) {
-    return await this.serverService.socketEventCreateServer(client, data);
+    return await this.dmService.socketEventDmCreate(client, data);
   }
 
   @SubscribeMessage('dm:list')
   async handleDmList(
-    @MessageBody() data: Conversation[] & RequestWithId,
+    @MessageBody() data: RequestWithId,
     @ConnectedSocket() client: Socket,
   ) {
     const userId = client.user?.id;
     if (!userId) {
+      // Отправляем ошибку через то же событие
+      client.emit('dm:list', { error: 'Unauthorized', id: data.id });
       return;
     }
 
-    return await this.userService.getUserChats(userId);
+    try {
+      const chats = await this.userService.getUserChats(userId);
+      console.log(`📨 Отправляю ${chats.length} чатов`);
+      // Отправляем ответ через ТО ЖЕ событие: 'dm:list'
+      client.emit('dm:list', { response: chats, id: data.id });
+    } catch (error) {
+      console.error('🔥 Ошибка:', error);
+      client.emit('dm:list', { error: 'Failed to load chats', id: data.id });
+    }
   }
 
   // === ЗВОНКИ ===
