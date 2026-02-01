@@ -81,7 +81,10 @@ export class callService {
 
     const callerSocketId = userSockets.get(callerId);
     if (callerSocketId) {
-      server.to(callerSocketId).emit('call_accepted', { by: calleeId });
+      server.to(callerSocketId).emit('call_accepted', {
+        by: calleeId,
+        conversationId: payload.conversationId,
+      });
     }
   }
 
