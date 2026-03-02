@@ -24,3 +24,12 @@ export class CreateUserDto implements CreateUserDto {
   @IsString()
   username!: string;
 }
+
+export interface FindUserInput {
+  name: string;
+}
+
+export class FindUserDto {
+  @IsString()
+  name!: string;
+}

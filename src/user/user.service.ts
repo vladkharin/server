@@ -3,6 +3,7 @@ import { CreateUserDto } from './dto/user.dto';
 import { genSalt, hash } from 'bcryptjs';
 import { User } from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
+import { PUBLIC_USER } from 'src/types/types';
 
 @Injectable()
 export class UserService {
@@ -52,6 +53,27 @@ export class UserService {
           },
         },
       },
+    });
+  }
+
+  async searchUsers(query: string): Promise<PUBLIC_USER[]> {
+    const PUBLIC_USER_SELECT = {
+      id: true,
+      name: true,
+      surname: true,
+      username: true,
+    } as const;
+
+    return this.prisma.user.findMany({
+      where: {
+        OR: [
+          { username: { startsWith: query, mode: 'insensitive' } },
+          { name: { startsWith: query, mode: 'insensitive' } },
+          { surname: { startsWith: query, mode: 'insensitive' } },
+        ],
+      },
+      select: PUBLIC_USER_SELECT,
+      take: 10,
     });
   }
 }
