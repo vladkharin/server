@@ -25,19 +25,13 @@ FROM gcr.io/distroless/nodejs22-debian12
 
 WORKDIR /app
 
-# Устанавливаем ТОЛЬКО production-зависимости
-COPY package*.json ./
-RUN npm ci --only=production
-
-# Копируем собранный код и необходимые файлы Prisma
+# Копируем только production-зависимости и результат сборки
+COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma/client ./node_modules/@prisma/client
-
-# 🔥 Копируем схему Prisma — без неё миграции не работают!
 COPY --from=builder /app/prisma ./prisma
 
 EXPOSE 3001
-
-CMD ["node", "dist/main.js"]
+CMD ["dist/main.js"]
 
