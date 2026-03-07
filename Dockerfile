@@ -23,13 +23,6 @@ RUN npx prisma generate --schema=./prisma && \
 # ========= ФИНАЛЬНЫЙ ОБРАЗ (легковесный для запуска) =========
 FROM gcr.io/distroless/nodejs22-debian12
 
-RUN apk update && apk upgrade --no-cache
-
-RUN apk add --no-cache postgresql-client
-
-# Устанавливаем psql для отладки (опционально)
-RUN apk add --no-cache postgresql-client
-
 WORKDIR /app
 
 # Устанавливаем ТОЛЬКО production-зависимости
