@@ -21,7 +21,7 @@ RUN npx prisma generate --schema=./prisma && \
     npx nest build
 
 # ========= ФИНАЛЬНЫЙ ОБРАЗ (легковесный для запуска) =========
-FROM node:22-alpine
+FROM gcr.io/distroless/nodejs22-debian12
 
 RUN apk update && apk upgrade --no-cache
 
@@ -47,3 +47,4 @@ COPY --from=builder /app/prisma ./prisma
 EXPOSE 3001
 
 CMD ["node", "dist/main.js"]
+
