@@ -1,5 +1,9 @@
 # Этап сборки
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
+
+RUN apk update && apk upgrade --no-cache
+
+RUN apk add --no-cache postgresql-client
 
 WORKDIR /app
 
@@ -17,7 +21,11 @@ RUN npx prisma generate --schema=./prisma && \
     npx nest build
 
 # ========= ФИНАЛЬНЫЙ ОБРАЗ (легковесный для запуска) =========
-FROM node:20-alpine
+FROM node:22-alpine
+
+RUN apk update && apk upgrade --no-cache
+
+RUN apk add --no-cache postgresql-client
 
 # Устанавливаем psql для отладки (опционально)
 RUN apk add --no-cache postgresql-client
