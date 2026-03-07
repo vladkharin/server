@@ -2,7 +2,7 @@
 FROM node:22-alpine AS builder
 
 # Устанавливаем зависимости, необходимые для сборки mediasoup
-RUN apk add --no-cache python3 make g++ bash
+RUN apk add --no-cache python3 py3-pip make g++ bash
 
 WORKDIR /app
 COPY package*.json ./
