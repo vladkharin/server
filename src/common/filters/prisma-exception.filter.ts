@@ -7,21 +7,22 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Response } from 'express';
-import { PrismaClientKnownRequestError } from '../../../generated/prisma/client';
+import { Prisma } from '../../../generated/prisma/client';
 
-@Catch(PrismaClientKnownRequestError)
+// Теперь используем Prisma.PrismaClientKnownRequestError
+@Catch(Prisma.PrismaClientKnownRequestError)
 export class PrismaClientExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(PrismaClientExceptionFilter.name);
 
-  catch(exception: PrismaClientKnownRequestError, host: ArgumentsHost) {
+  catch(exception: Prisma.PrismaClientKnownRequestError, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
 
-    // Логируем ошибку (полезно для отладки)
     this.logger.error(`Prisma error: ${exception.message}`, exception.stack);
 
     const fields = (exception.meta?.target as string[]) || ['field'];
     const field = fields[0];
+
     switch (exception.code) {
       case 'P2002': // Unique constraint failed
         return response.status(HttpStatus.CONFLICT).json({
@@ -30,7 +31,7 @@ export class PrismaClientExceptionFilter implements ExceptionFilter {
           error: 'Conflict',
         });
 
-      case 'P2025': // Record to update/delete not found
+      case 'P2025': // Record not found
         return response.status(HttpStatus.NOT_FOUND).json({
           statusCode: HttpStatus.NOT_FOUND,
           message: 'Запись не найдена',
@@ -45,7 +46,6 @@ export class PrismaClientExceptionFilter implements ExceptionFilter {
         });
 
       default:
-        // Любая другая ошибка Prisma → 400
         return response.status(HttpStatus.BAD_REQUEST).json({
           statusCode: HttpStatus.BAD_REQUEST,
           message: 'Ошибка базы данных',
