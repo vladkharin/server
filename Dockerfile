@@ -2,9 +2,7 @@
 FROM node:22-alpine AS builder
 
 # Устанавливаем зависимости, необходимые для сборки mediasoup
-RUN apk add --no-cache \
-    python3 py3-pip make g++ bash \
-    linux-headers
+RUN apk add --no-cache python3 py3-pip make g++ bash
 
 WORKDIR /app
 COPY package*.json ./
@@ -18,11 +16,10 @@ FROM gcr.io/distroless/nodejs22-debian12
 
 WORKDIR /app
 
-# Копируем только результат сборки
+# Копируем всё необходимое из builder
+COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=builder /app/node_modules/@prisma/client ./node_modules/@prisma/client
-COPY --from=builder /app/node_modules/mediasoup/worker ./node_modules/mediasoup/worker
+COPY --from=builder /app/node_modules ./node_modules   
 COPY --from=builder /app/prisma ./prisma
 
 EXPOSE 3001
