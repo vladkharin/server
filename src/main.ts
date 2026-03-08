@@ -1,7 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { PrismaService } from './prisma/prisma.service';
-import { PrismaClientExceptionFilter } from './common/filters/prisma-exception.filter';
+// import { PrismaClientExceptionFilter } from './common/filters/prisma-exception.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -16,7 +16,7 @@ async function bootstrap() {
     process.exit(1); // Завершить приложение, если БД недоступна
   }
 
-  app.useGlobalFilters(new PrismaClientExceptionFilter());
+  // app.useGlobalFilters(new PrismaClientExceptionFilter());
   app.enableCors();
   app.enableShutdownHooks();
   app.setGlobalPrefix('api');
