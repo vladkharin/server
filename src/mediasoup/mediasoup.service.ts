@@ -13,9 +13,18 @@ export class MediasoupService implements OnModuleInit {
     // ✅ Один вызов с полными настройками
     this.worker = await mediasoup.createWorker({
       logLevel: 'debug',
-      logTags: ['info', 'ice', 'dtls', 'rtp', 'srtp', 'rtcp'],
+      logTags: [
+        'info',
+        'ice',
+        'dtls',
+        'rtp',
+        'srtp',
+        'rtcp',
+        'transport',
+        'worker',
+      ],
       rtcMinPort: 40000,
-      rtcMaxPort: 49999,
+      rtcMaxPort: 40100,
     });
 
     console.log('✅ Mediasoup worker created');
@@ -46,15 +55,34 @@ export class MediasoupService implements OnModuleInit {
   async createWebRtcTransport(
     direction: 'send' | 'recv',
   ): Promise<mediasoup.WebRtcTransport> {
-    console.log(PUBLIC_IP);
-    return this.router.createWebRtcTransport({
-      listenIps: [{ ip: '0.0.0.0', announcedIp: PUBLIC_IP }],
-      enableUdp: true,
-      enableTcp: true,
-      preferUdp: true,
-      appData: {},
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
-    });
+    console.log(`🔧 Creating ${direction} transport. PUBLIC_IP =`, PUBLIC_IP);
+
+    try {
+      const transport = await this.router.createWebRtcTransport({
+        listenIps: [{ ip: '0.0.0.0', announcedIp: PUBLIC_IP }],
+        enableUdp: true,
+        enableTcp: true,
+        preferUdp: true,
+        appData: {},
+        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+      });
+
+      // Логируем события транспорта
+      transport.on('close', () =>
+        console.log(`🔌 Transport closed (id=${transport.id})`),
+      );
+      transport.on('newconsumer', (consumer) =>
+        console.log(`🎤 New consumer: ${consumer.id}`),
+      );
+      transport.on('newproducer', (producer) =>
+        console.log(`📢 New producer: ${producer.id}`),
+      );
+
+      return transport;
+    } catch (err) {
+      console.error('❌ Failed to create WebRtcTransport:', err);
+      throw err;
+    }
   }
 }
 
