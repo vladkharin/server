@@ -53,6 +53,7 @@ export class MediasoupService implements OnModuleInit {
       enableTcp: true,
       preferUdp: true,
       appData: {},
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
     });
   }
 }
