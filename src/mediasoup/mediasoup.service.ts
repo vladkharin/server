@@ -67,17 +67,6 @@ export class MediasoupService implements OnModuleInit {
         iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
       });
 
-      // Логируем события транспорта
-      transport.on('close', () =>
-        console.log(`🔌 Transport closed (id=${transport.id})`),
-      );
-      transport.on('newconsumer', (consumer) =>
-        console.log(`🎤 New consumer: ${consumer.id}`),
-      );
-      transport.on('newproducer', (producer) =>
-        console.log(`📢 New producer: ${producer.id}`),
-      );
-
       return transport;
     } catch (err) {
       console.error('❌ Failed to create WebRtcTransport:', err);
