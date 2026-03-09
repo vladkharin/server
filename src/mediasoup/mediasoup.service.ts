@@ -2,6 +2,8 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import * as mediasoup from 'mediasoup';
 
+const PUBLIC_IP = process.env.PUBLIC_IP || '127.0.0.1';
+
 @Injectable()
 export class MediasoupService implements OnModuleInit {
   private worker!: mediasoup.Worker;
@@ -45,7 +47,7 @@ export class MediasoupService implements OnModuleInit {
     direction: 'send' | 'recv',
   ): Promise<mediasoup.WebRtcTransport> {
     return this.router.createWebRtcTransport({
-      listenIps: [{ ip: '0.0.0.0', announcedIp: '127.0.0.1' }],
+      listenIps: [{ ip: '0.0.0.0', announcedIp: PUBLIC_IP }],
       enableUdp: true,
       enableTcp: true,
       preferUdp: true,
