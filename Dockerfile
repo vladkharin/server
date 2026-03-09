@@ -1,10 +1,11 @@
 # Этап сборки
-FROM node:22-alpine AS builder
+FROM node:22-bookworm AS builder
 
-# Устанавливаем зависимости для сборки mediasoup
-RUN apk add --no-cache \
-    python3 py3-pip make g++ bash \
-    linux-headers
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY package*.json ./
@@ -13,17 +14,21 @@ RUN npm ci
 COPY . .
 RUN npx prisma generate --schema=./prisma && npx nest build
 
-# ========= ФИНАЛЬНЫЙ ОБРАЗ =========
-FROM gcr.io/distroless/nodejs22-debian12
+
+# Финальный образ — тоже Debian
+FROM node:22-bookworm
+
+# Устанавливаем только runtime-зависимости
+RUN apt-get update && apt-get install -y postgresql-client && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Копируем всё необходимое из builder
+# Копируем всё из builder
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules   
-COPY --from=builder /app/generated ./generated 
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/generated ./generated
 COPY --from=builder /app/prisma ./prisma
 
 EXPOSE 3001
-CMD ["dist/main.js"]
+CMD ["node", "dist/main.js"]
