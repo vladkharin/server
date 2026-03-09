@@ -10,6 +10,9 @@ jobs:
   deploy-server:
     runs-on: ubuntu-latest
 
+    env:
+      DOCKER_BUILDKIT: 1
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
