@@ -5,7 +5,14 @@ export interface WebRtcSignalPayload {
 
 export type PUBLIC_USER = {
   id: number;
-  name: string;
-  surname: string;
   username: string;
+};
+
+export type PublicUser = {
+  id: number;
+  username: string;
+  // 👇 Расширяем тип для возврата из поиска
+  hasPendingRequest?: boolean;
+  isFriend?: boolean;
+  isRequestReceived?: boolean; // 👈 Если запрос отправлен МНЕ
 };

@@ -149,6 +149,15 @@ exports.Prisma.MessageScalarFieldEnum = {
   conversationId: 'conversationId'
 };
 
+exports.Prisma.FriendScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  senderId: 'senderId',
+  receiverId: 'receiverId',
+  status: 'status'
+};
+
 exports.Prisma.UserScalarFieldEnum = {
   createdAt: 'createdAt',
   id: 'id',
@@ -179,10 +188,17 @@ exports.ConvType = exports.$Enums.ConvType = {
   SERVER_CHANNEL: 'SERVER_CHANNEL'
 };
 
+exports.FriendStatus = exports.$Enums.FriendStatus = {
+  PENDING: 'PENDING',
+  ACCEPTED: 'ACCEPTED',
+  BLOCKED: 'BLOCKED'
+};
+
 exports.Prisma.ModelName = {
   Conversation: 'Conversation',
   ConversationMember: 'ConversationMember',
   Message: 'Message',
+  Friend: 'Friend',
   User: 'User'
 };
 

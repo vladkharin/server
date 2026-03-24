@@ -42,6 +42,12 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       if (!user) return client.disconnect(true);
 
       client.user = user;
+
+      await client.join(`user:${user.id}`);
+      console.log(
+        `✅ User ${user.id} connected and joined room user:${user.id}`,
+      );
+
       this.userSockets.set(user.id, client.id);
       console.log(`✅ Пользователь ${user.id} подключён`);
 
@@ -66,11 +72,15 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @MessageBody() data: FindUserDto & RequestWithId,
     @ConnectedSocket() client: Socket,
   ) {
-    const userId = client.user?.id;
+    const userId = client.user?.id as number;
+
     if (!userId) {
       return;
     }
-    return await this.userService.searchUsers(data.name);
+
+    const findUsers = await this.userService.searchUsers(data.name, userId);
+
+    client.emit('users:find', { response: findUsers, id: data.id });
   }
 
   // === Чаты ===

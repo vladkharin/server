@@ -1,3 +1,28 @@
+enum FriendStatus {
+  PENDING // Запрос отправлен, ждёт подтверждения
+  ACCEPTED // Друзья
+  BLOCKED // В чёрном списке (опционально)
+}
+
+// 👇 Добавляем после модели User
+model Friend {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  senderId   Int
+  receiverId Int
+  status     FriendStatus @default(PENDING)
+
+  sender   User @relation("friendSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver User @relation("friendReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  // Уникальная пара пользователей (в любом направлении)
+  @@unique([senderId, receiverId])
+  @@index([status])
+  @@map("friends")
+}
+
 model User {
   createdAt DateTime @default(now())
   id        Int      @id @default(autoincrement())
@@ -13,6 +38,9 @@ model User {
 
   // Отправленные сообщения (для аналитики или поиска)
   sentMessages Message[] @relation("SentMessages")
+
+  friendsSent     Friend[] @relation("friendSender")
+  friendsReceived Friend[] @relation("friendReceiver")
 
   @@map("users")
 }
