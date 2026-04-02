@@ -8,6 +8,7 @@ import { DmModule } from './dm/dm.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { CallModule } from './call/call.module';
 import { FriendModule } from './friend/friend.module';
+import { MessageModule } from './message/message.module';
 const envFilePath = path.resolve(__dirname, '../.env');
 
 @Module({
@@ -22,6 +23,7 @@ const envFilePath = path.resolve(__dirname, '../.env');
     PrismaModule,
     CallModule,
     FriendModule,
+    MessageModule,
   ],
   providers: [EventsGateway],
 })

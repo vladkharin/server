@@ -24,7 +24,7 @@ model ConversationMember {
     joinedAt       DateTime  @default(now())
     lastReadAt     DateTime? // для отметки прочитанных сообщений
     isOwner        Boolean   @default(false)
-    nickname       String? // персональное имя в чате (как в Discord)
+    username       String? // персональное имя в чате (как в Discord)
 
     user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
     conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)

@@ -79,9 +79,23 @@ export class FriendGateway {
         data.senderId,
         data.accept,
       );
-      return { ...result, id: data.id };
+
+      if (result.action == 'accepted') {
+        this.server
+          .to(`user:${data.senderId}`)
+          .emit(NOTIFICATIONS.friendRequestResponded, { response: result });
+
+        client.emit(REQUESTS.friendRespond, { response: result, id: data.id });
+      } else {
+        this.server
+          .to(`user:${data.senderId}`)
+          .emit(NOTIFICATIONS.friendRequestResponded, { response: result });
+      }
     } catch (error: any) {
-      return { error: error.message, id: data.id };
+      client.emit(REQUESTS.friendRespond, {
+        error: error?.message,
+        id: data.id,
+      });
     }
   }
 

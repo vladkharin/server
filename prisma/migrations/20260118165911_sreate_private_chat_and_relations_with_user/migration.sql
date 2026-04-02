@@ -23,7 +23,7 @@ CREATE TABLE "ConversationMember" (
     "joinedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "lastReadAt" TIMESTAMP(3),
     "isOwner" BOOLEAN NOT NULL DEFAULT false,
-    "nickname" TEXT,
+    "username" TEXT,
 
     CONSTRAINT "ConversationMember_pkey" PRIMARY KEY ("id")
 );

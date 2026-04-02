@@ -16,6 +16,7 @@ import { RequestWithId } from 'src/common/utils/request-with-id.interface';
 import { callService } from 'src/call/call.service';
 import { UserService } from 'src/user/user.service';
 import { FindUserDto } from 'src/user/dto/user.dto';
+import { PrismaService } from 'src/prisma/prisma.service';
 
 //node -e "console.log(require('ulid').ulid())"
 
@@ -31,6 +32,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private dmService: dmService,
     private callService: callService,
     private userService: UserService,
+    private readonly prisma: PrismaService,
   ) {}
 
   async handleConnection(client: Socket) {
@@ -43,13 +45,22 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
       client.user = user;
 
+      // 👇 1. Личная комната для уведомлений
       await client.join(`user:${user.id}`);
-      console.log(
-        `✅ User ${user.id} connected and joined room user:${user.id}`,
-      );
+
+      // 👇 2. 🆕 Присоединяем ко всем чатам пользователя
+      const conversations = await this.prisma.conversationMember.findMany({
+        where: { userId: user.id },
+        select: { conversationId: true },
+      });
+
+      for (const member of conversations) {
+        await client.join(`chat:${member.conversationId}`);
+        console.log(`📥 User ${user.id} joined chat:${member.conversationId}`);
+      }
 
       this.userSockets.set(user.id, client.id);
-      console.log(`✅ Пользователь ${user.id} подключён`);
+      console.log(`✅ User ${user.id} connected`);
 
       client.emit('auth:ready');
     } catch (_e) {

@@ -1,5 +1,5 @@
 // src/friend/friend.service.ts
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { FriendStatus } from '../../generated/prisma/client'; // 👈 Из Prisma!
 import { PrismaService } from 'src/prisma/prisma.service';
 
@@ -73,13 +73,11 @@ export class FriendService {
 
   async respondToRequest(userId: number, senderId: number, accept: boolean) {
     const friend = await this.prisma.friend.findUnique({
-      where: {
-        senderId_receiverId: { senderId, receiverId: userId },
-      },
+      where: { senderId_receiverId: { senderId, receiverId: userId } },
     });
 
     if (!friend) {
-      throw new NotFoundException('Запрос не найден');
+      return { success: false, error: 'Запрос не найден' };
     }
 
     if (accept) {
@@ -91,14 +89,35 @@ export class FriendService {
           receiver: { select: { id: true, username: true } },
         },
       });
+
+      const isSender = updated.senderId === userId;
+      const other = isSender ? updated.receiver : updated.sender;
+
       return {
-        success: true as const,
-        action: 'accepted' as const,
-        friendship: updated as FriendshipWithUser,
+        success: true,
+        action: 'accepted',
+        friend: {
+          id: other.id,
+          username: other.username,
+          friendship: {
+            id: updated.id,
+            status: updated.status,
+            createdAt: updated.createdAt,
+            isInitiator: isSender,
+          },
+        },
+        friendId: senderId, // 👈 ID пользователя
+        friendshipId: updated.id, // 👈 ID записи дружбы
       };
     } else {
       await this.prisma.friend.delete({ where: { id: friend.id } });
-      return { success: true as const, action: 'declined' as const };
+
+      return {
+        success: true,
+        action: 'declined',
+        friendId: senderId, // 👈 ID пользователя (для удаления из списка)
+        friendshipId: friend.id, // 👈 ID записи (если нужно на фронте)
+      };
     }
   }
 
