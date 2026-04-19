@@ -1,11 +1,12 @@
 import { Module } from '@nestjs/common';
-import { callService } from './call.service';
+import { CallService } from './call.service';
 import { DmModule } from 'src/dm/dm.module';
 import { MediasoupService } from 'src/mediasoup/mediasoup.service';
+import { CallGateway } from './call.gateway';
 
 @Module({
   imports: [DmModule],
-  providers: [callService, MediasoupService],
-  exports: [callService, MediasoupService],
+  providers: [CallService, MediasoupService, CallGateway],
+  exports: [CallService, MediasoupService],
 })
 export class CallModule {}

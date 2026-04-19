@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { CreateUserDto } from './dto/user.dto';
 import { genSalt, hash } from 'bcryptjs';
-import type { User } from '../../generated/prisma/client';
+import type { User } from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { PUBLIC_USER, PublicUser } from 'src/types/types';
 

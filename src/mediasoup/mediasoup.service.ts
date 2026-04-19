@@ -1,17 +1,12 @@
-// src/mediasoup/mediasoup.service.ts
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import * as mediasoup from 'mediasoup';
 
-const PUBLIC_IP = process.env.PUBLIC_IP;
-
 @Injectable()
 export class MediasoupService implements OnModuleInit {
-  private worker!: mediasoup.Worker;
-  private router!: mediasoup.Router;
+  private worker!: mediasoup.types.Worker;
 
   async onModuleInit() {
-    // ✅ Один вызов с полными настройками
-    this.worker = await mediasoup.createWorker({
+    this.worker = (await mediasoup.createWorker({
       logLevel: 'debug',
       logTags: [
         'info',
@@ -25,16 +20,18 @@ export class MediasoupService implements OnModuleInit {
       ],
       rtcMinPort: 40000,
       rtcMaxPort: 40100,
-    });
-
-    console.log('✅ Mediasoup worker created');
+    })) as unknown as mediasoup.types.Worker;
 
     this.worker.on('died', () => {
       console.error('Mediasoup worker died!');
       process.exit(1);
     });
 
-    this.router = await this.worker.createRouter({
+    console.log('✅ Mediasoup worker ready');
+  }
+
+  async createRouter(): Promise<mediasoup.types.Router> {
+    return await this.worker.createRouter({
       mediaCodecs: [
         {
           kind: 'audio',
@@ -42,39 +39,97 @@ export class MediasoupService implements OnModuleInit {
           clockRate: 48000,
           channels: 2,
         },
+        {
+          kind: 'video',
+          mimeType: 'video/VP8',
+          clockRate: 90000,
+          parameters: { 'x-google-start-bitrate': 1000 },
+        },
       ],
     });
-
-    console.log('✅ Mediasoup router created');
-  }
-
-  getRouterRtpCapabilities() {
-    return this.router.rtpCapabilities;
   }
 
   async createWebRtcTransport(
-    direction: 'send' | 'recv',
-  ): Promise<mediasoup.WebRtcTransport> {
-    console.log(`🔧 Creating ${direction} transport. PUBLIC_IP =`, PUBLIC_IP);
+    router: mediasoup.types.Router,
+  ): Promise<mediasoup.types.WebRtcTransport> {
+    return await router.createWebRtcTransport({
+      listenIps: [{ ip: '127.0.0.1', announcedIp: '127.0.0.1' }],
+      enableUdp: true,
+      enableTcp: true,
+      preferUdp: true,
 
-    try {
-      const transport = await this.router.createWebRtcTransport({
-        listenIps: [{ ip: '0.0.0.0', announcedIp: PUBLIC_IP }],
-        enableUdp: true,
-        enableTcp: true,
-        preferUdp: true,
-        appData: {},
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
-      });
-
-      return transport;
-    } catch (err) {
-      console.error('❌ Failed to create WebRtcTransport:', err);
-      throw err;
-    }
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+      ],
+      initialAvailableOutgoingBitrate: 1000000,
+    });
   }
 }
 
-export type RtpCapabilities = ReturnType<
-  MediasoupService['getRouterRtpCapabilities']
->;
+/* eslint-disable @typescript-eslint/no-namespace */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+declare module 'mediasoup' {
+  export function createWorker(options: any): Promise<types.Worker>;
+
+  export namespace types {
+    export type MediaKind = 'audio' | 'video';
+
+    export interface DtlsParameters {
+      [key: string]: any;
+    }
+
+    export interface RtpParameters {
+      [key: string]: any;
+    }
+
+    export interface RtpCapabilities {
+      [key: string]: any;
+    }
+
+    export interface Worker {
+      on(event: 'died', listener: () => void): void;
+      close(): void;
+      createRouter(options: { mediaCodecs: any[] }): Promise<Router>;
+    }
+
+    export interface Router {
+      id: string;
+      rtpCapabilities: RtpCapabilities;
+      createWebRtcTransport(options: any): Promise<WebRtcTransport>;
+      close(): void;
+    }
+
+    export interface WebRtcTransport {
+      id: string;
+      iceParameters: any;
+      iceCandidates: any[];
+      dtlsParameters: DtlsParameters;
+      connect(params: { dtlsParameters: DtlsParameters }): Promise<void>;
+      produce(params: {
+        kind: MediaKind;
+        rtpParameters: RtpParameters;
+      }): Promise<Producer>;
+      consume(params: {
+        producerId: string;
+        rtpCapabilities: any;
+        paused?: boolean;
+      }): Promise<Consumer>;
+      close(): void;
+    }
+
+    export interface Producer {
+      id: string;
+      kind: MediaKind;
+      close(): void;
+    }
+
+    export interface Consumer {
+      id: string;
+      producerId: string;
+      kind: MediaKind;
+      rtpParameters: any;
+      close(): void;
+    }
+  }
+}

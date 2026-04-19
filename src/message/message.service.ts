@@ -2,7 +2,7 @@
 
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { Message } from '../../generated/prisma/client';
+import { Message } from '@prisma/client';
 import { Server } from 'socket.io';
 import { NOTIFICATIONS } from 'src/commands/commands';
 

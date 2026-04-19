@@ -1,4 +1,3 @@
-// src/types/mediasoup.d.ts
 declare module 'mediasoup' {
   export function createWorker(options: any): Promise<Worker>;
 
@@ -9,8 +8,10 @@ declare module 'mediasoup' {
   }
 
   export interface Router {
+    id: string;
     rtpCapabilities: any;
     createWebRtcTransport(options: any): Promise<WebRtcTransport>;
+    close(): void; // Добавили для корректного закрытия комнат
   }
 
   export interface WebRtcTransport {
@@ -33,7 +34,15 @@ declare module 'mediasoup' {
 
   export interface Producer {
     id: string;
+    kind: 'audio' | 'video';
     close(): void;
-    kind: string;
+  }
+
+  export interface Consumer {
+    id: string;
+    producerId: string;
+    kind: 'audio' | 'video';
+    rtpParameters: any;
+    close(): void;
   }
 }

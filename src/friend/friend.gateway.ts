@@ -8,7 +8,7 @@ import {
 } from '@nestjs/websockets';
 import { Socket, Server } from 'socket.io';
 import { FriendService } from './friend.service';
-import { FriendStatus } from '../../generated/prisma/client'; // 👈 Из Prisma!
+import { FriendStatus } from '@prisma/client'; // 👈 Из Prisma!
 import { NOTIFICATIONS, REQUESTS } from 'src/commands/commands';
 
 export interface FriendRequestDto {
@@ -85,17 +85,17 @@ export class FriendGateway {
           .to(`user:${data.senderId}`)
           .emit(NOTIFICATIONS.friendRequestResponded, { response: result });
 
-        client.emit(REQUESTS.friendRespond, { response: result, id: data.id });
+        return { response: result, id: data.id };
       } else {
         this.server
           .to(`user:${data.senderId}`)
           .emit(NOTIFICATIONS.friendRequestResponded, { response: result });
       }
     } catch (error: any) {
-      client.emit(REQUESTS.friendRespond, {
+      return {
         error: error?.message,
         id: data.id,
-      });
+      };
     }
   }
 
@@ -106,19 +106,17 @@ export class FriendGateway {
   ) {
     const userId = client.user?.id;
     if (!userId)
-      return client.emit(REQUESTS.friendList, {
+      return {
         error: 'Unauthorized',
         id: data.id,
-      });
+      };
 
     try {
       const friends = await this.friendService.getFriends(userId, data.status);
       console.log(friends);
-      client.emit(REQUESTS.friendList, { response: friends, id: data.id });
-      return;
+      return { response: friends, id: data.id };
     } catch (error: any) {
-      client.emit(REQUESTS.friendList, { error: error.message, id: data.id });
-      return;
+      return { error: error.message, id: data.id };
     }
   }
 
@@ -132,7 +130,7 @@ export class FriendGateway {
 
     try {
       const requests = await this.friendService.getIncomingRequests(userId);
-      client.emit(REQUESTS.friendIncoming, { response: requests, id: data.id });
+      return { response: requests, id: data.id };
     } catch (error: any) {
       return { error: error.message, id: data.id };
     }
@@ -149,7 +147,7 @@ export class FriendGateway {
     try {
       const requests = await this.friendService.getOutgoingRequests(userId);
       // 👇 Отправляем ответ на то же событие
-      client.emit(REQUESTS.friendOutgoing, { response: requests, id: data.id });
+      return { response: requests, id: data.id };
     } catch (error: any) {
       return { error: error.message, id: data.id };
     }

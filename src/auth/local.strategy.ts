@@ -2,7 +2,7 @@ import { Strategy } from 'passport-local';
 import { PassportStrategy } from '@nestjs/passport';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import type { User } from '../../generated/prisma/client';
+import type { User } from '@prisma/client';
 
 // Исключаем поле password из типа User
 type SafeUser = Omit<User, 'password'>;

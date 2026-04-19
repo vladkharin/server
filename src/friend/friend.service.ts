@@ -1,6 +1,6 @@
 // src/friend/friend.service.ts
 import { Injectable } from '@nestjs/common';
-import { FriendStatus } from '../../generated/prisma/client'; // 👈 Из Prisma!
+import { FriendStatus } from '@prisma/client'; // 👈 Из Prisma!
 import { PrismaService } from 'src/prisma/prisma.service';
 
 // 👇 Типы для возврата (упрощённые)

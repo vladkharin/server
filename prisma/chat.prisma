@@ -14,6 +14,9 @@ model Conversation {
     owner    User?                @relation(fields: [ownerId], references: [id])
     members  ConversationMember[]
     messages Message[]
+
+    callActive    Boolean   @default(false)
+    callStartedAt DateTime?
 }
 
 // =============== УЧАСТНИКИ ЧАТА ===============

@@ -1,32 +1,62 @@
-// src/call/call.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
-import { dmService } from 'src/dm/dm.service';
-import {
-  MediasoupService,
-  RtpCapabilities,
-} from 'src/mediasoup/mediasoup.service';
+import { MediasoupService } from 'src/mediasoup/mediasoup.service';
+import * as mediasoup from 'mediasoup';
+import { PrismaService } from 'src/prisma/prisma.service';
 
-import { WebRtcTransport, Producer } from 'mediasoup';
+interface Peer {
+  userId: number;
+  socketId: string;
+  transports: Map<string, mediasoup.types.WebRtcTransport>;
+  producers: Map<string, mediasoup.types.Producer>;
+  consumers: Map<string, mediasoup.types.Consumer>;
+}
 
-interface Room {
-  transports: Map<string, WebRtcTransport>;
-  producers: Map<string, Producer>;
+interface CallRoom {
+  conversationId: number;
+  router: mediasoup.types.Router;
+  transports: Map<string, mediasoup.types.WebRtcTransport>;
+  producers: Map<string, mediasoup.types.Producer>;
+  consumers: Map<string, mediasoup.types.Consumer>;
+  peers: Map<number, Peer>;
 }
 
 @Injectable()
-export class callService {
-  private readonly logger = new Logger(callService.name);
-  private rooms = new Map<number, Room>();
+export class CallService {
+  private readonly logger = new Logger(CallService.name);
+  private rooms = new Map<number, CallRoom>();
 
   constructor(
-    private dmService: dmService,
-    private mediasoupService: MediasoupService,
+    private readonly prisma: PrismaService,
+    private readonly mediasoupService: MediasoupService,
   ) {}
 
-  // ========================
-  // 🔔 СИГНАЛЬНЫЕ СОБЫТИЯ ЗВОНКОВ
-  // ========================
+  // --- Вспомогательные методы ---
+
+  async getOrCreateRoom(convId: number): Promise<CallRoom> {
+    let room = this.rooms.get(convId);
+    if (!room) {
+      this.logger.log(`🛠 Создание новой комнаты: ${convId}`);
+      const router = await this.mediasoupService.createRouter();
+      room = {
+        conversationId: convId,
+        router: router,
+        transports: new Map(), // Инициализируем
+        producers: new Map(), // Инициализируем
+        consumers: new Map(), // Инициализируем
+        peers: new Map(),
+      };
+      this.rooms.set(convId, room);
+
+      await this.prisma.conversation.update({
+        where: { id: convId },
+        data: { callActive: true, callStartedAt: new Date() },
+      });
+    }
+    return room;
+  }
+
+  // --- Логика сигналинга (из старого EventsGateway) ---
 
   async handleCallRequest(
     client: Socket,
@@ -34,58 +64,22 @@ export class callService {
     userSockets: Map<number, string>,
     server: Server,
   ) {
-    const userId = client.user?.id;
-    if (!userId) {
-      this.logger.warn('handleCallRequest: Unauthorized');
-      return { error: 'Unauthorized' };
-    }
-
+    const callerId = client.user?.id as number;
     const { conversationId } = payload;
-    this.logger.log(
-      `📞 handleCallRequest от userId=${userId}, conversationId=${conversationId}`,
-    );
 
-    const isMember = await this.dmService.isUserInConversation(
-      userId,
-      conversationId,
-    );
-    if (!isMember) {
-      this.logger.warn(`Пользователь ${userId} не в беседе ${conversationId}`);
-      return { error: 'Not a member' };
-    }
+    const members = await this.prisma.conversationMember.findMany({
+      where: { conversationId, userId: { not: callerId } },
+    });
 
-    await client.join(`room-${conversationId}`);
-    this.logger.log(
-      `✅ Пользователь ${userId} присоединился к room-${conversationId}`,
-    );
-
-    const participants =
-      await this.dmService.getConversationParticipants(conversationId);
-    const recipients = participants.filter((id) => id !== userId);
-    this.logger.log(
-      `📤 Отправляем call:incoming ${recipients.length} получателям`,
-    );
-
-    for (const recipientId of recipients) {
-      const socketId = userSockets.get(recipientId);
+    members.forEach((member) => {
+      const socketId = userSockets.get(member.userId);
       if (socketId) {
-        const recipientSocket = server.sockets.sockets.get(socketId);
-        if (recipientSocket) {
-          recipientSocket.emit('call:incoming', {
-            callerId: userId,
-            conversationId,
-          });
-          this.logger.log(
-            `📨 Отправлен call:incoming пользователю ${recipientId}`,
-          );
-        } else {
-          this.logger.warn(`Сокет не найден для пользователя ${recipientId}`);
-        }
-      } else {
-        this.logger.warn(`Нет сокета для пользователя ${recipientId}`);
+        server.to(socketId).emit('call:incoming', {
+          conversationId,
+          callerId,
+        });
       }
-    }
-
+    });
     return { success: true };
   }
 
@@ -94,170 +88,127 @@ export class callService {
     payload: { conversationId: number },
     server: Server,
   ) {
-    const userId = client.user?.id;
-    if (!userId) {
-      this.logger.warn('handleCallAccept: Unauthorized');
-      return { error: 'Unauthorized' };
-    }
-
+    const userId = client.user?.id as number;
     const { conversationId } = payload;
+
     this.logger.log(
-      `✅ handleCallAccept от userId=${userId}, conversationId=${conversationId}`,
+      `📞 User ${userId} accepted call in conv ${conversationId}`,
     );
 
-    const isMember = await this.dmService.isUserInConversation(
-      userId,
+    // 1. Создаем/получаем комнату (роутер)
+    await this.getOrCreateRoom(conversationId);
+
+    // 2. Добавляем пользователя в Socket-комнату для трансляций
+    await client.join(`chat:${conversationId}`);
+
+    // 3. Уведомляем остальных участников чата, что пользователь присоединился к звонку
+    server.to(`chat:${conversationId}`).emit('call:accepted', {
       conversationId,
-    );
-    if (!isMember) {
-      this.logger.warn(`Пользователь ${userId} не в беседе ${conversationId}`);
-      return { error: 'Not a member of conversation' };
-    }
-
-    await client.join(`room-${conversationId}`);
-    server
-      .to(`room-${conversationId}`)
-      .emit('call:started', { conversationId });
-    this.logger.log(`🎉 Отправлен call:started всем в room-${conversationId}`);
+      userId,
+    });
 
     return { success: true };
   }
 
-  // ========================
-  // 📡 MEDIASOUP МЕТОДЫ
-  // ========================
-
-  handleGetRouterRtpCapabilities(
-    _client: Socket,
-    _payload: { conversationId: number },
-  ): RtpCapabilities {
-    this.logger.log('📥 Получен запрос routerRtpCapabilities');
-    const caps = this.mediasoupService.getRouterRtpCapabilities();
-    this.logger.log('📤 Отправляем routerRtpCapabilities');
-    return caps;
+  async handleGetRouterRtpCapabilities(
+    client: Socket,
+    payload: { conversationId: number },
+  ) {
+    const room = await this.getOrCreateRoom(payload.conversationId);
+    return room.router.rtpCapabilities;
   }
 
-  async handleCreateWebRtcTransport(
-    client: Socket,
-    payload: { conversationId: number; direction: 'send' | 'recv' },
-  ) {
-    const userId = client.user?.id;
-    if (!userId) throw new Error('Unauthorized');
+  // --- Core Mediasoup Методы (типизированные) ---
 
-    const isMember = await this.dmService.isUserInConversation(
-      userId,
-      payload.conversationId,
+  async createTransport(userId: number, convId: number) {
+    const room = await this.getOrCreateRoom(convId);
+    const transport = await this.mediasoupService.createWebRtcTransport(
+      room.router,
     );
-    if (!isMember) throw new Error('Not a member');
 
-    if (!this.rooms.has(payload.conversationId)) {
-      this.rooms.set(payload.conversationId, {
+    // 1. Сохраняем в ОБЩУЮ карту комнаты (ВАЖНО для produce)
+    room.transports.set(transport.id, transport);
+
+    // 2. Сохраняем в карту конкретного юзера
+    let peer = room.peers.get(userId);
+    if (!peer) {
+      peer = {
+        userId,
+        socketId: '',
         transports: new Map(),
         producers: new Map(),
-      });
-      this.logger.log(`🆕 Создана комната ${payload.conversationId}`);
+        consumers: new Map(),
+      };
+      room.peers.set(userId, peer);
     }
-    const room = this.rooms.get(payload.conversationId)!;
-
-    const transport = await this.mediasoupService.createWebRtcTransport(
-      payload.direction,
-    );
-    const key = `${userId}-${payload.direction}`;
-    room.transports.set(key, transport);
-
-    this.logger.log(
-      `📤 Создан ${payload.direction} transport для userId=${userId}, id=${transport.id}`,
-    );
+    peer.transports.set(transport.id, transport);
 
     return {
       id: transport.id,
-      iceParameters: transport.iceParameters,
+      iceParameters: transport.iceParameters as mediasoup.types.WebRtcTransport,
       iceCandidates: transport.iceCandidates,
       dtlsParameters: transport.dtlsParameters,
     };
   }
 
-  async handleConnectTransport(
-    _client: Socket,
-    payload: {
-      conversationId: number;
-      transportId: string;
-      dtlsParameters: unknown;
-    },
+  async connectTransport(
+    userId: number,
+    convId: number,
+    transportId: string,
+    dtlsParameters: mediasoup.types.DtlsParameters,
   ) {
-    const room = this.rooms.get(payload.conversationId);
-    if (!room) throw new Error('Room not found');
-
-    const transport = Array.from(room.transports.values()).find(
-      (t) => t.id === payload.transportId,
-    );
+    const room = this.rooms.get(convId);
+    const transport = room?.peers.get(userId)?.transports.get(transportId);
     if (!transport) throw new Error('Transport not found');
-
-    await transport.connect({ dtlsParameters: payload.dtlsParameters as any });
-    this.logger.log(`🔌 Подключён transport ${payload.transportId}`);
-    return { success: true };
+    await transport.connect({ dtlsParameters });
   }
 
-  async handleProduce(
-    client: Socket,
-    payload: {
-      conversationId: number;
-      transportId: string;
-      kind: 'audio' | 'video';
-      rtpParameters: unknown;
-    },
-    userSockets: Map<number, string>,
-    server: Server,
+  async produce(
+    userId: number,
+    convId: number,
+    transportId: string,
+    kind: mediasoup.types.MediaKind,
+    rtpParameters: mediasoup.types.RtpParameters,
   ) {
-    try {
-      const userId = client.user?.id;
-      if (!userId) throw new Error('Unauthorized');
+    const numericConvId = Number(convId);
+    const room = this.rooms.get(numericConvId);
+    // if (!room) throw new Error(`Room ${convId} not found`);
 
-      const room = this.rooms.get(payload.conversationId);
-      if (!room) throw new Error('Room not found');
-
-      const transport = Array.from(room.transports.values()).find(
-        (t) => t.id === payload.transportId,
+    if (!room) {
+      this.logger.error(
+        `❌ Комната ${numericConvId} вообще не существует в Map!`,
       );
-      if (!transport) throw new Error('Transport not found');
-
-      const producer = await transport.produce({
-        kind: payload.kind,
-        rtpParameters: payload.rtpParameters as any,
-      });
-
-      const producerKey = `${userId}-${payload.kind}`;
-      room.producers.set(producerKey, producer);
-
-      this.logger.log(
-        `📤 Создан producer ${producer.id} (${payload.kind}) для userId=${userId}`,
-      );
-
-      const participants = await this.dmService.getConversationParticipants(
-        payload.conversationId,
-      );
-      for (const participantId of participants) {
-        if (participantId === userId) continue;
-        const socketId = userSockets.get(participantId);
-        if (socketId) {
-          const participantSocket = server.sockets.sockets.get(socketId);
-          if (participantSocket) {
-            participantSocket.emit('new-producer', {
-              producerId: producer.id,
-              peerId: userId,
-              conversationId: payload.conversationId,
-            });
-            this.logger.log(
-              `📨 Отправлен new-producer к userId=${participantId}`,
-            );
-          }
-        }
-      }
-
-      return { id: producer.id };
-    } catch (e) {
-      console.error(e);
+      throw new Error('Room not found');
     }
+
+    this.logger.log(
+      `🔎 Ищем транспорт ${transportId} в комнате ${numericConvId}`,
+    );
+    this.logger.log(
+      `📜 Всего транспортов в этой комнате: ${room.transports.size}`,
+    );
+
+    const transport = room.transports.get(transportId);
+    if (!transport) {
+      // Выведи в консоль для отладки, что там вообще есть
+      console.log(
+        'Available transports in room:',
+        Array.from(room.transports.keys()),
+      );
+      throw new Error(`Transport ${transportId} not found in room ${convId}`);
+    }
+
+    const producer = await transport.produce({ kind, rtpParameters });
+
+    // Сохраняем и в комнату, и в пира
+    room.producers.set(producer.id, producer);
+    room.peers.get(userId)?.producers.set(producer.id, producer);
+
+    this.logger.log(
+      `🎤 User ${userId} is now producing ${kind} in room ${convId}`,
+    );
+
+    return producer.id;
   }
 
   async handleConsume(
@@ -265,47 +216,37 @@ export class callService {
     payload: {
       conversationId: number;
       producerId: string;
-      rtpCapabilities: unknown;
+      rtpCapabilities: mediasoup.types.RtpCapabilities;
     },
   ) {
-    const userId = client.user?.id;
-    if (!userId) throw new Error('Unauthorized');
-
+    const userId = client.user?.id as number;
     const room = this.rooms.get(payload.conversationId);
     if (!room) throw new Error('Room not found');
 
-    let targetProducer: Producer | null = null;
-    for (const producer of room.producers.values()) {
-      if (producer.id === payload.producerId) {
-        targetProducer = producer;
-        break;
-      }
-    }
-    if (!targetProducer) throw new Error('Producer not found');
+    const peer = room.peers.get(userId);
+    // Для consume обычно нужен отдельный recvTransport.
+    // Предположим, берем первый попавшийся или логика предполагает наличие recvTransport
+    const transport = Array.from(peer?.transports.values() || [])[0];
+    if (!transport) throw new Error('No transport available for consume');
 
-    const recvKey = `${userId}-recv`;
-    const recvTransport = room.transports.get(recvKey);
-    if (!recvTransport) {
-      throw new Error('Recv transport not found for user');
-    }
-
-    const consumer = await recvTransport.consume({
-      producerId: targetProducer.id,
-      rtpCapabilities: payload.rtpCapabilities as any,
+    const consumer = await transport.consume({
+      producerId: payload.producerId,
+      rtpCapabilities: payload.rtpCapabilities,
       paused: false,
     });
 
-    this.logger.log(
-      `🎧 Создан consumer ${consumer.id} для userId=${userId}, producerId=${payload.producerId}`,
-    );
+    peer?.consumers.set(consumer.id, consumer);
 
     return {
       id: consumer.id,
-      producerId: targetProducer.id,
-      kind: targetProducer.kind,
+      producerId: payload.producerId,
+      kind: consumer.kind,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       rtpParameters: consumer.rtpParameters,
     };
   }
+
+  // --- Выход и завершение ---
 
   async handleLeaveRoom(
     client: Socket,
@@ -313,58 +254,37 @@ export class callService {
     userSockets: Map<number, string>,
     server: Server,
   ) {
-    const userId = client.user?.id;
-    if (!userId) return;
+    if (!client.user?.id) return;
 
-    const room = this.rooms.get(payload.conversationId);
+    const userId = client.user?.id as number;
+    await this.cleanupPeer(userId, payload.conversationId, server);
+    return { success: true };
+  }
+
+  private async cleanupPeer(userId: number, convId: number, server: Server) {
+    const room = this.rooms.get(convId);
     if (!room) return;
 
-    // Закрытие продюсеров
-    for (const [key, producer] of room.producers.entries()) {
-      if (key.startsWith(`${userId}-`)) {
-        producer.close();
-        room.producers.delete(key);
-        this.logger.log(
-          `CloseOperation producer ${producer.id} для userId=${userId}`,
-        );
-      }
+    const peer = room.peers.get(userId);
+    if (peer) {
+      peer.transports.forEach((t) => t.close());
+      room.peers.delete(userId);
+      server.to(`chat:${convId}`).emit('call:peerLeft', { userId });
     }
 
-    // Закрытие транспортов
-    for (const [key, transport] of room.transports.entries()) {
-      if (key.startsWith(`${userId}-`)) {
-        transport.close();
-        room.transports.delete(key);
-        this.logger.log(
-          `CloseOperation transport для userId=${userId}, key=${key}`,
-        );
-      }
+    if (room.peers.size === 0) {
+      room.router.close();
+      this.rooms.delete(convId);
+      await this.prisma.conversation.update({
+        where: { id: convId },
+        data: { callActive: false },
+      });
     }
+  }
 
-    // Уведомление других
-    const participants = await this.dmService.getConversationParticipants(
-      payload.conversationId,
-    );
-    for (const participantId of participants) {
-      if (participantId === userId) continue;
-      const socketId = userSockets.get(participantId);
-      if (socketId) {
-        const participantSocket = server.sockets.sockets.get(socketId);
-        if (participantSocket) {
-          participantSocket.emit('producer-closed', {
-            producerId: `${userId}-audio`,
-          });
-          this.logger.log(
-            `📨 Отправлен producer-closed к userId=${participantId}`,
-          );
-        }
-      }
+  async handleGlobalDisconnect(userId: number, server: Server) {
+    for (const convId of this.rooms.keys()) {
+      await this.cleanupPeer(userId, convId, server);
     }
-
-    await client.leave(`room-${payload.conversationId}`);
-    this.logger.log(
-      `📴 Пользователь ${userId} покинул room-${payload.conversationId}`,
-    );
-    return { success: true };
   }
 }

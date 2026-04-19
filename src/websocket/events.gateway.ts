@@ -13,10 +13,11 @@ import { AuthService } from 'src/auth/auth.service';
 import { dmService } from 'src/dm/dm.service';
 import { createDmDto } from 'src/dm/dto/dm.dto';
 import { RequestWithId } from 'src/common/utils/request-with-id.interface';
-import { callService } from 'src/call/call.service';
+import { CallService } from 'src/call/call.service';
 import { UserService } from 'src/user/user.service';
 import { FindUserDto } from 'src/user/dto/user.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
+import { PresenceService } from './presence.service';
 
 //node -e "console.log(require('ulid').ulid())"
 
@@ -25,12 +26,11 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server!: Server;
 
-  private userSockets = new Map<number, string>();
-
   constructor(
+    private presenceService: PresenceService,
     private authService: AuthService,
     private dmService: dmService,
-    private callService: callService,
+    private callService: CallService,
     private userService: UserService,
     private readonly prisma: PrismaService,
   ) {}
@@ -45,10 +45,22 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
       client.user = user;
 
-      // 👇 1. Личная комната для уведомлений
-      await client.join(`user:${user.id}`);
+      // 🛑 ПРОВЕРКА: Если у юзера уже есть активный сокет,
+      // можно либо отключить старый, либо просто пропустить тяжелую логику.
+      const existingSocketId = this.presenceService.getSocketId(user.id);
+      if (existingSocketId && existingSocketId !== client.id) {
+        console.log(
+          `- Переподключение юзера ${user.id}, старый сокет: ${existingSocketId}`,
+        );
+        // Опционально: можно принудительно закрыть старый сокет
+        // this.server.sockets.sockets.get(existingSocketId)?.disconnect();
+      }
 
-      // 👇 2. 🆕 Присоединяем ко всем чатам пользователя
+      // Обновляем Presence сразу
+      this.presenceService.set(user.id, client.id);
+
+      // Вход в комнаты
+      await client.join(`user:${user.id}`);
       const conversations = await this.prisma.conversationMember.findMany({
         where: { userId: user.id },
         select: { conversationId: true },
@@ -56,12 +68,9 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
       for (const member of conversations) {
         await client.join(`chat:${member.conversationId}`);
-        console.log(`📥 User ${user.id} joined chat:${member.conversationId}`);
       }
 
-      this.userSockets.set(user.id, client.id);
-      console.log(`✅ User ${user.id} connected`);
-
+      console.log(`✅ User ${user.id} connected (Socket: ${client.id})`);
       client.emit('auth:ready');
     } catch (_e) {
       client.disconnect(true);
@@ -69,10 +78,15 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   handleDisconnect(client: Socket) {
-    const userId = client.user?.id;
+    const userId = client.user?.id as number;
     if (userId) {
-      this.userSockets.delete(userId);
-      console.log(`📴 Пользователь ${userId} отключён`);
+      // this.userSockets.delete(userId);
+      if (this.presenceService.getSocketId(userId) === client.id) {
+        this.presenceService.remove(userId);
+        console.log(`📴 Пользователь ${userId} окончательно отключён`);
+      } else {
+        console.log(`ℹ️ Проигнорирован старый дисконнект для ${userId}`);
+      }
     }
   }
 
@@ -91,7 +105,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     const findUsers = await this.userService.searchUsers(data.name, userId);
 
-    client.emit('users:find', { response: findUsers, id: data.id });
+    return { response: findUsers, id: data.id };
   }
 
   // === Чаты ===
@@ -109,179 +123,176 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @MessageBody() data: RequestWithId,
     @ConnectedSocket() client: Socket,
   ) {
-    const userId = client.user?.id;
+    const userId = client.user?.id as number;
     if (!userId) {
       // Отправляем ошибку через то же событие
-      client.emit('dm:list', { error: 'Unauthorized', id: data.id });
-      return;
+      return { error: 'Unauthorized', id: data.id };
     }
 
     try {
       const chats = await this.userService.getUserChats(userId);
       console.log(`📨 Отправляю ${chats.length} чатов`);
       // Отправляем ответ через ТО ЖЕ событие: 'dm:list'
-      client.emit('dm:list', { response: chats, id: data.id });
+      return { response: chats, id: data.id };
     } catch (error) {
       console.error('🔥 Ошибка:', error);
-      client.emit('dm:list', { error: 'Failed to load chats', id: data.id });
+      return { error: 'Failed to load chats', id: data.id };
     }
   }
 
-  // === ЗВОНКИ ===
-  @SubscribeMessage('call:request')
-  async handleCallRequest(
-    @MessageBody() payload: { conversationId: number },
-    @ConnectedSocket() client: Socket,
-  ) {
-    return this.callService.handleCallRequest(
-      client,
-      payload,
-      this.userSockets, // ← твой Map<number, string>
-      this.server, // ← Server из @WebSocketServer()
-    );
-  }
+  // // === ЗВОНКИ ===
+  // @SubscribeMessage('call:request')
+  // async handleCallRequest(
+  //   @MessageBody() payload: { conversationId: number },
+  //   @ConnectedSocket() client: Socket,
+  // ) {
+  //   return this.callService.handleCallRequest(
+  //     client,
+  //     payload,
+  //     this.userSockets, // ← твой Map<number, string>
+  //     this.server, // ← Server из @WebSocketServer()
+  //   );
+  // }
 
-  @SubscribeMessage('call:accept')
-  async handleCallAccept(
-    @MessageBody() payload: { conversationId: number },
-    @ConnectedSocket() client: Socket,
-  ) {
-    return this.callService.handleCallAccept(client, payload, this.server);
-  }
+  // @SubscribeMessage('call:accept')
+  // async handleCallAccept(
+  //   @MessageBody() payload: { conversationId: number },
+  //   @ConnectedSocket() client: Socket,
+  // ) {
+  //   return this.callService.handleCallAccept(client, payload, this.server);
+  // }
 
-  @SubscribeMessage('mediasoup:getRouterRtpCapabilities')
-  async handleGetRouterRtpCapabilities(
-    @MessageBody() payload: { conversationId: number; id: string },
-    @ConnectedSocket() client: Socket,
-  ) {
-    try {
-      const rtpCapabilities =
-        await this.callService.handleGetRouterRtpCapabilities(client, payload);
-      client.emit('mediasoup:getRouterRtpCapabilities', {
-        id: payload.id,
-        response: rtpCapabilities,
-      });
-    } catch (error) {
-      console.log(error);
-    }
-  }
+  // @SubscribeMessage('mediasoup:getRouterRtpCapabilities')
+  // async handleGetRouterRtpCapabilities(
+  //   @MessageBody() payload: { conversationId: number; id: string },
+  //   @ConnectedSocket() client: Socket,
+  // ) {
+  //   try {
+  //     const rtpCapabilities =
+  //       await this.callService.handleGetRouterRtpCapabilities(client, payload);
+  //     return {
+  //       id: payload.id,
+  //       response: rtpCapabilities,
+  //     };
+  //   } catch (error) {
+  //     console.log(error);
+  //   }
+  // }
 
-  @SubscribeMessage('mediasoup:createWebRtcTransport')
-  async handleCreateWebRtcTransport(
-    @MessageBody()
-    payload: { conversationId: number; direction: 'send' | 'recv'; id: string },
-    @ConnectedSocket() client: Socket,
-  ) {
-    try {
-      const transportInfo = await this.callService.handleCreateWebRtcTransport(
-        client,
-        payload,
-      );
-      client.emit('mediasoup:createWebRtcTransport', {
-        id: payload.id,
-        response: transportInfo,
-      });
-    } catch (error) {
-      console.log(error);
-    }
-  }
+  // @SubscribeMessage('mediasoup:createWebRtcTransport')
+  // async handleCreateWebRtcTransport(
+  //   @MessageBody()
+  //   payload: { conversationId: number; direction: 'send' | 'recv'; id: string },
+  //   @ConnectedSocket() client: Socket,
+  // ) {
+  //   try {
+  //     const transportInfo = await this.callService.handleCreateWebRtcTransport(
+  //       client,
+  //       payload,
+  //     );
+  //     return {
+  //       id: payload.id,
+  //       response: transportInfo,
+  //     };
+  //   } catch (error) {
+  //     console.log(error);
+  //   }
+  // }
 
-  @SubscribeMessage('mediasoup:connectTransport')
-  async handleConnectTransport(
-    @MessageBody()
-    payload: {
-      conversationId: number;
-      transportId: string;
-      dtlsParameters: any;
-      id: string;
-    },
-    @ConnectedSocket() client: Socket,
-  ) {
-    try {
-      const result = await this.callService.handleConnectTransport(
-        client,
-        payload,
-      );
-      client.emit('mediasoup:connectTransport', {
-        id: payload.id,
-        response: result,
-      });
-    } catch (error) {
-      console.log(error);
-    }
-  }
+  // @SubscribeMessage('mediasoup:connectTransport')
+  // async handleConnectTransport(
+  //   @MessageBody() payload: any,
+  //   @ConnectedSocket() client: Socket,
+  // ) {
+  //   try {
+  //     // Ждем выполнения логики в сервисе
+  //     const response = await this.callService.handleConnectTransport(
+  //       client,
+  //       payload,
+  //     );
 
-  @SubscribeMessage('mediasoup:produce')
-  async handleProduce(
-    @MessageBody()
-    payload: {
-      conversationId: number;
-      transportId: string;
-      kind: 'audio' | 'video';
-      rtpParameters: any;
-      id: string;
-    },
-    @ConnectedSocket() client: Socket,
-  ) {
-    try {
-      const result = await this.callService.handleProduce(
-        client,
-        payload,
-        this.userSockets,
-        this.server,
-      );
-      client.emit('mediasoup:produce', {
-        id: payload.id,
-        response: result,
-      });
-    } catch (error) {
-      console.log(error);
-    }
-  }
+  //     // ОБЯЗАТЕЛЬНО возвращаем объект. NestJS сам отправит его в коллбэк.
+  //     return { response };
+  //   } catch (error) {
+  //     console.error('ошибка в connectTransport:', error);
+  //     // return { error: error.message };
+  //   }
+  // }
 
-  @SubscribeMessage('mediasoup:consume')
-  async handleConsume(
-    @MessageBody()
-    payload: {
-      conversationId: number;
-      producerId: string;
-      rtpCapabilities: any;
-      id: string;
-    },
-    @ConnectedSocket() client: Socket,
-  ) {
-    try {
-      // ✅ Передаём только client и payload
-      const result = await this.callService.handleConsume(client, payload);
+  // @SubscribeMessage('mediasoup:produce')
+  // async handleProduce(
+  //   @MessageBody() payload: any,
+  //   @ConnectedSocket() client: Socket,
+  // ) {
+  //   try {
+  //     const result = await this.callService.handleProduce(
+  //       client,
+  //       payload,
+  //       this.userSockets,
+  //       this.server,
+  //     );
+  //     return { response: result }; // Вернет { response: { id: "..." } }
+  //   } catch (error) {
+  //     console.log(error);
+  //     // return { error: error.message };
+  //   }
+  // }
+  // @SubscribeMessage('mediasoup:consume')
+  // async handleConsume(
+  //   @MessageBody()
+  //   payload: {
+  //     conversationId: number;
+  //     producerId: string;
+  //     rtpCapabilities: any;
+  //     id: string;
+  //   },
+  //   @ConnectedSocket() client: Socket,
+  // ) {
+  //   try {
+  //     // ✅ Передаём только client и payload
+  //     const result = await this.callService.handleConsume(client, payload);
 
-      client.emit('mediasoup:consume', {
-        id: payload.id,
-        response: result,
-      });
-    } catch (error) {
-      console.error('❌ Consume error:', error);
-      // ❗ Обязательно отправляй ошибку клиенту
-    }
-  }
+  //     return {
+  //       id: payload.id,
+  //       response: result,
+  //     };
+  //   } catch (error) {
+  //     console.error('❌ Consume error:', error);
+  //     // ❗ Обязательно отправляй ошибку клиенту
+  //   }
+  // }
 
-  @SubscribeMessage('mediasoup:leaveRoom')
-  async handleLeaveRoom(
-    @MessageBody() payload: { conversationId: number; id: string },
-    @ConnectedSocket() client: Socket,
-  ) {
-    try {
-      const result = await this.callService.handleLeaveRoom(
-        client,
-        payload,
-        this.userSockets,
-        this.server,
-      );
-      client.emit('mediasoup:leaveRoom', {
-        id: payload.id,
-        response: result,
-      });
-    } catch (error) {
-      console.log(error);
-    }
-  }
+  // @SubscribeMessage('mediasoup:leaveRoom')
+  // async handleLeaveRoom(
+  //   @MessageBody() payload: { conversationId: number; id: string },
+  //   @ConnectedSocket() client: Socket,
+  // ) {
+  //   try {
+  //     const result = await this.callService.handleLeaveRoom(
+  //       client,
+  //       payload,
+  //       this.userSockets,
+  //       this.server,
+  //     );
+  //     return {
+  //       id: payload.id,
+  //       response: result,
+  //     };
+  //   } catch (error) {
+  //     console.log(error);
+  //   }
+  // }
+
+  // @SubscribeMessage('call:cancel')
+  // async handleCallCancel(
+  //   @MessageBody() payload: { conversationId: number },
+  //   @ConnectedSocket() client: Socket,
+  // ) {
+  //   return this.callService.handleCallCancel(
+  //     client,
+  //     payload,
+  //     this.userSockets,
+  //     this.server,
+  //   );
+  // }
 }

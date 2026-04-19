@@ -10,6 +10,18 @@ export const REQUESTS = {
   messageEdit: 'message:edit',
   messageDelete: 'message:delete',
   messageRead: 'message:read',
+
+  callRequest: 'call:request',
+  callAccept: 'call:accept',
+  callCancel: 'call:cancel',
+
+  getRouterRtpCapabilities: 'mediasoup:getRouterRtpCapabilities',
+  createTransport: 'mediasoup:createWebRtcTransport',
+  connectTransport: 'mediasoup:connectTransport',
+  produce: 'mediasoup:produce',
+  consume: 'mediasoup:consume',
+  leaveRoom: 'mediasoup:leaveRoom',
+  resume: 'mediasoup:resume',
 } as const;
 
 export const NOTIFICATIONS = {

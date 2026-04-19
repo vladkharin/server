@@ -7,7 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Response } from 'express';
-import { Prisma } from '../../../generated/prisma/client';
+import { Prisma } from '@prisma/client';
 
 // Теперь используем Prisma.PrismaClientKnownRequestError
 @Catch(Prisma.PrismaClientKnownRequestError)

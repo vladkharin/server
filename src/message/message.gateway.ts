@@ -63,10 +63,10 @@ export class MessageGateway {
         },
       });
       if (!member) {
-        return client.emit(REQUESTS.messageHistory, {
+        return {
           error: 'Not a member',
           id: data.id,
-        });
+        };
       }
       const result = await this.messageService.getMessages({
         conversationId: data.conversationId,
@@ -75,15 +75,15 @@ export class MessageGateway {
         beforeId: data.beforeId,
         fromUnread: data.fromUnread, // 👈 Передаём флаг
       });
-      return client.emit(REQUESTS.messageHistory, {
+      return {
         response: result,
         id: data.id,
-      });
+      };
     } catch (error: any) {
-      return client.emit(REQUESTS.messageHistory, {
+      return {
         error: error.message,
         id: data.id,
-      });
+      };
     }
   }
 }
