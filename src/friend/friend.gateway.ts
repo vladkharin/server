@@ -36,9 +36,11 @@ export class FriendGateway {
   @SubscribeMessage(REQUESTS.friendRequest)
   async handleFriendRequest(
     @MessageBody() data: FriendRequestDto,
-    @ConnectedSocket() client: Socket & { user?: { id: number } },
+    @ConnectedSocket()
+    client: Socket & { user?: { id: number; username: string } },
   ) {
     const senderId = client.user?.id;
+    const senderName = client.user?.username;
     if (!senderId) return { error: 'Unauthorized', id: data.id };
 
     try {
@@ -46,17 +48,15 @@ export class FriendGateway {
         senderId,
         data.targetId,
       );
-
-      if ('friendship' in result && result?.friendship?.status === 'PENDING') {
+      if ('success' in result && result.success) {
         this.server
           .to(`user:${data.targetId}`)
           .emit(NOTIFICATIONS.friendRequestReceived, {
-            from: {
-              id: senderId,
-              username: result.friendship.sender.username, // или возьмите из сервиса
-            },
-            friendshipId: result.friendship.id,
-            createdAt: result.friendship.createdAt,
+            id: senderId,
+            username: senderName,
+            isFriend: false,
+            hasPendingRequest: true,
+            isRequestReceived: true, // Для него это входящий запрос
           });
       }
       return { ...result, id: data.id };
@@ -68,7 +68,8 @@ export class FriendGateway {
   @SubscribeMessage(REQUESTS.friendRespond)
   async handleFriendRespond(
     @MessageBody() data: RespondToFriendDto,
-    @ConnectedSocket() client: Socket & { user?: { id: number } },
+    @ConnectedSocket()
+    client: Socket & { user?: { id: number } },
   ) {
     const userId = client.user?.id;
     if (!userId) return { error: 'Unauthorized', id: data.id };

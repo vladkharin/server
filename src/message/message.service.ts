@@ -28,121 +28,52 @@ export class MessageService {
 
   // 🔹 МЕТОД 1: Отправка сообщения
 
-  async sendMessage(
-    userId: number,
-    dto: SendMessageDto,
-    server: Server, // 👈 Сервер передаётся из гейтвита
-  ): Promise<Message> {
-    console.log('📤 [MessageService] sendMessage called', {
-      userId,
-      conversationId: dto.conversationId,
-      contentPreview:
-        dto.content.slice(0, 50) + (dto.content.length > 50 ? '...' : ''),
-      isTemporary: dto.isTemporary,
-      targetUserId: dto.targetUserId,
-      timestamp: new Date().toISOString(),
-    });
-
+  async sendMessage(userId: number, dto: SendMessageDto, server: Server) {
     let conversationId = dto.conversationId;
+    let isNewChat = false;
 
-    // 🔹 Логика временных чатов
+    // 1. Логика временных чатов (Материализация)
     if (dto.isTemporary && dto.targetUserId) {
-      console.log('🔄 [MessageService] Processing temporary chat', {
-        tempConversationId: dto.conversationId,
-        targetUserId: dto.targetUserId,
+      // Ищем, не создали ли уже чат пока мы писали сообщение (по dmHash)
+      const dmHash = `${Math.min(userId, dto.targetUserId)}-${Math.max(userId, dto.targetUserId)}`;
+
+      let chat = await this.prisma.conversation.findFirst({
+        where: { type: 'DIRECT', dmHash },
       });
 
-      const existingChat = await this.prisma.conversation.findFirst({
-        where: {
-          type: 'DIRECT',
-          dmHash: `${Math.min(userId, dto.targetUserId)}-${Math.max(userId, dto.targetUserId)}`,
-        },
-      });
-
-      if (existingChat) {
-        console.log('✅ [MessageService] Found existing chat for users', {
-          userId,
-          targetUserId: dto.targetUserId,
-          existingChatId: existingChat.id,
-        });
-        conversationId = existingChat.id;
-      } else {
-        console.log('🆕 [MessageService] Creating new DIRECT chat', {
-          userId,
-          targetUserId: dto.targetUserId,
-          dmHash: `${Math.min(userId, dto.targetUserId)}-${Math.max(userId, dto.targetUserId)}`,
-        });
-
-        const newChat = await this.prisma.conversation.create({
+      if (!chat) {
+        // Создаем новый реальный чат в БД
+        chat = await this.prisma.conversation.create({
           data: {
             type: 'DIRECT',
-            dmHash: `${Math.min(userId, dto.targetUserId)}-${Math.max(userId, dto.targetUserId)}`,
+            dmHash,
           },
         });
 
-        // 👇 🔥 ИСПРАВЛЕНО: Используем server (параметр) и dto.targetUserId
-        server
-          .to(`user:${dto.targetUserId}`) // 👈 Уведомляем того, кому пишут
-          .emit(NOTIFICATIONS.directChatNew, {
-            response: {
-              id: newChat.id,
-              type: newChat.type,
-              name: null, // Для DIRECT чатов
-              avatar: null,
-              ownerId: userId, // Тот, кто создал
-              members: [
-                { userId, username: 'Вы' }, // Можно подгрузить имя отправителя
-                { userId: dto.targetUserId, username: 'Собеседник' },
-              ],
-              createdAt: newChat.createdAt,
-            },
-          });
-
-        console.log('✨ [MessageService] New chat created', {
-          newChatId: newChat.id,
-        });
-
+        // Добавляем участников
         await this.prisma.conversationMember.createMany({
           data: [
-            { userId, conversationId: newChat.id },
-            { userId: dto.targetUserId, conversationId: newChat.id },
+            { userId, conversationId: chat.id },
+            { userId: dto.targetUserId, conversationId: chat.id },
           ],
         });
 
-        console.log('👥 [MessageService] Added members to chat', {
-          chatId: newChat.id,
-          members: [userId, dto.targetUserId],
-        });
-
-        conversationId = newChat.id;
+        isNewChat = true;
       }
+
+      conversationId = chat.id;
     }
 
-    // 🔹 Проверка доступа к чату
-    console.log('🔐 [MessageService] Checking chat access', {
-      userId,
-      conversationId,
-    });
-
+    // 2. Проверка доступа (безопасность)
     const member = await this.prisma.conversationMember.findUnique({
       where: { userId_conversationId: { userId, conversationId } },
     });
 
     if (!member) {
-      console.error('❌ [MessageService] Access denied', {
-        userId,
-        conversationId,
-      });
       throw new Error('У вас нет доступа к этому чату');
     }
 
-    // 🔹 Создание сообщения
-    console.log('💬 [MessageService] Creating message', {
-      conversationId,
-      senderId: userId,
-      contentPreview: dto.content.slice(0, 30) + '...',
-    });
-
+    // 3. Создание сообщения
     const message = await this.prisma.message.create({
       data: {
         content: dto.content,
@@ -154,26 +85,64 @@ export class MessageService {
       },
     });
 
-    console.log('✨ [MessageService] Message created', {
-      messageId: message.id,
-      conversationId,
-      senderId: userId,
-      createdAt: message.createdAt,
-    });
-
-    // 🔹 Обновление чата
+    // 4. Обновляем время активности чата
     await this.prisma.conversation.update({
       where: { id: conversationId },
       data: { updatedAt: new Date() },
     });
 
-    console.log('🎯 [MessageService] sendMessage completed', {
-      messageId: message.id,
-      conversationId,
-      timestamp: new Date().toISOString(),
+    // 5. Собираем данные для фронтенда
+    const chatData = await this.getChatWithInterlocutor(conversationId, userId);
+
+    // Если чат новый, уведомляем ПОЛУЧАТЕЛЯ
+    if (isNewChat && dto.targetUserId) {
+      const chatForReceiver = await this.getChatWithInterlocutor(
+        conversationId,
+        dto.targetUserId,
+      );
+      server
+        .to(`user:${dto.targetUserId}`)
+        .emit(NOTIFICATIONS.directChatNew, chatForReceiver);
+    }
+
+    // Возвращаем объект "склейки"
+    return {
+      ...message,
+      tempConversationId: dto.isTemporary ? dto.conversationId : undefined,
+      realConversationId: conversationId,
+      fullChat: chatData, // Чтобы фронт обновил весь объект чата в сторе
+    };
+  }
+
+  // Вспомогательный метод для сборки ChatItem (добавь в этот же сервис)
+  private async getChatWithInterlocutor(
+    conversationId: number,
+    currentUserId: number,
+  ) {
+    const conv = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      include: {
+        members: {
+          include: {
+            user: {
+              select: { id: true, username: true, name: true, surname: true },
+            },
+          },
+        },
+      },
     });
 
-    return message;
+    if (!conv) return null;
+
+    const otherMember = conv.members.find((m) => m.userId !== currentUserId);
+
+    return {
+      id: conv.id,
+      type: conv.type,
+      updatedAt: conv.updatedAt,
+      interlocutor: otherMember?.user || null,
+      lastMessage: null, // Можно заполнить при желании
+    };
   }
 
   // 🔹 МЕТОД 2: Получение сообщений

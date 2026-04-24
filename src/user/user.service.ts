@@ -3,7 +3,7 @@ import { CreateUserDto } from './dto/user.dto';
 import { genSalt, hash } from 'bcryptjs';
 import type { User } from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { PUBLIC_USER, PublicUser } from 'src/types/types';
+import { PublicUser } from 'src/types/types';
 
 @Injectable()
 export class UserService {
@@ -37,8 +37,7 @@ export class UserService {
       username: true,
     } as const;
 
-    // В методе сервиса
-    return this.prisma.conversation.findMany({
+    const conversations = await this.prisma.conversation.findMany({
       where: {
         members: {
           some: { userId },
@@ -52,7 +51,33 @@ export class UserService {
             },
           },
         },
+        // Можно сразу подтянуть последнее сообщение для превью
+        messages: {
+          take: 1,
+          orderBy: { createdAt: 'desc' },
+        },
       },
+    });
+
+    // Трансформируем вывод
+    return conversations.map((conv) => {
+      // Находим "другого" пользователя (не меня)
+      // Если это групповой чат, здесь будет массив других людей
+      const otherMember = conv.members.find((m) => m.userId !== userId);
+      const lastMessage = conv.messages[0] || null;
+
+      return {
+        id: conv.id,
+        updatedAt: conv.updatedAt,
+        lastMessage: lastMessage
+          ? {
+              text: lastMessage.content,
+              createdAt: lastMessage.createdAt,
+            }
+          : null,
+        // Выносим данные собеседника на верхний уровень
+        interlocutor: otherMember?.user || null,
+      };
     });
   }
 
@@ -64,7 +89,8 @@ export class UserService {
       id: true,
       username: true,
     } as const;
-    // 🔹 1. Получаем базовых пользователей (используем константу)
+
+    // 🔹 1. Получаем базовых пользователей
     const users = await this.prisma.user.findMany({
       where: {
         ...(currentUserId && { NOT: { id: currentUserId } }),
@@ -74,13 +100,17 @@ export class UserService {
       take: 10,
     });
 
-    // 🔹 2. Если нет текущего юзера — возвращаем как есть (без статусов)
+    // 🔹 2. Если нет текущего юзера — возвращаем список с дефолтными статусами
     if (!currentUserId) {
-      return users as PublicUser[];
+      return users.map((user) => ({
+        ...user,
+        hasPendingRequest: false,
+        isFriend: false,
+        isRequestReceived: false,
+      })) as PublicUser[];
     }
 
-    // 🔹 3. Получаем ВСЕ отношения текущего юзера с найденными пользователями
-    // (ОДИН запрос вместо N+1!)
+    // 🔹 3. Получаем отношения текущего юзера с найденными пользователями
     const relationships = await this.prisma.friend.findMany({
       where: {
         OR: [
@@ -101,7 +131,7 @@ export class UserService {
       },
     });
 
-    // 🔹 4. Создаём карту статусов для быстрого доступа: userId -> статус
+    // 🔹 4. Создаём карту статусов
     const statusMap = new Map<
       number,
       {
@@ -112,23 +142,29 @@ export class UserService {
     >();
 
     for (const rel of relationships) {
-      // Определяем, кто "другой" пользователь в этой паре
       const otherId =
         rel.senderId === currentUserId ? rel.receiverId : rel.senderId;
 
       statusMap.set(otherId, {
         hasPendingRequest: rel.status === 'PENDING',
         isFriend: rel.status === 'ACCEPTED',
-        // Запрос получен, если я — получатель (receiver), а статус PENDING
         isRequestReceived:
           rel.status === 'PENDING' && rel.receiverId === currentUserId,
       });
     }
 
-    // 🔹 5. Объединяем пользователей с их статусами
-    return users.map((user) => ({
-      ...user, // 👈 Распаковываем данные из PUBLIC_USER_SELECT
-      ...statusMap.get(user.id), // 👈 Добавляем статусы (если есть)
-    }));
+    // 🔹 5. Объединяем данные, гарантируя наличие всех полей
+    return users.map((user) => {
+      const status = statusMap.get(user.id) || {
+        hasPendingRequest: false,
+        isFriend: false,
+        isRequestReceived: false,
+      };
+
+      return {
+        ...user,
+        ...status,
+      };
+    });
   }
 }

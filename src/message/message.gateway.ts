@@ -24,25 +24,33 @@ export class MessageGateway {
   ) {}
   @SubscribeMessage(REQUESTS.messageSend)
   async handleMessageSend(
-    @MessageBody() data: SendMessageDto, // Используем правильный DTO
+    @MessageBody() data: SendMessageDto,
     @ConnectedSocket() client: Socket & { user: { id: number } },
   ) {
     const userId = client.user.id;
 
     try {
-      const newMessage = await this.messageService.sendMessage(
+      const result = await this.messageService.sendMessage(
         userId,
         data,
         this.server,
       );
 
-      this.server
-        .to(`chat:${data.conversationId}`)
-        .emit(NOTIFICATIONS.messageNew, newMessage);
+      if (data.isTemporary) {
+        await client.join(`chat:${result?.realConversationId}`);
+      }
 
-      return { status: 'ok' };
+      this.server
+        .to(`chat:${result.realConversationId}`)
+        .emit(NOTIFICATIONS.messageNew, result);
+
+      return {
+        status: 'ok',
+        ...result, // Тут будут tempConversationId, realConversationId и fullChat
+      };
     } catch (e) {
-      return { status: 'error' };
+      console.error('Ошибка отправки сообщения:', e);
+      return { status: 'error', message: e };
     }
   }
 
@@ -79,9 +87,9 @@ export class MessageGateway {
         response: result,
         id: data.id,
       };
-    } catch (error: any) {
+    } catch (error) {
       return {
-        error: error.message,
+        error: error,
         id: data.id,
       };
     }

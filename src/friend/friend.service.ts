@@ -43,13 +43,27 @@ export class FriendService {
           { senderId: targetId, receiverId: senderId },
         ],
       },
+      include: {
+        receiver: { select: { id: true, username: true } },
+        sender: { select: { id: true, username: true } },
+      },
     });
 
     if (existing) {
+      // Трансформируем существующую запись в формат PublicUser для согласованности
+      const otherUser =
+        existing.senderId === senderId ? existing.receiver : existing.sender;
+
       return {
         exists: true as const,
-        status: existing.status,
         message: 'Запрос уже существует',
+        user: {
+          ...otherUser,
+          isFriend: existing.status === 'ACCEPTED',
+          hasPendingRequest: existing.status === 'PENDING',
+          isRequestReceived:
+            existing.status === 'PENDING' && existing.receiverId === senderId,
+        },
       };
     }
 
@@ -60,14 +74,20 @@ export class FriendService {
         status: FriendStatus.PENDING,
       },
       include: {
-        sender: { select: { id: true, username: true } },
         receiver: { select: { id: true, username: true } },
       },
     });
 
+    // Возвращаем объект target-пользователя с проставленными статусами
     return {
       success: true as const,
-      friendship: friend as FriendshipWithUser,
+      user: {
+        id: friend.receiver.id,
+        username: friend.receiver.username,
+        isFriend: false, // Только что создали PENDING
+        hasPendingRequest: true, // Да, мы только что отправили запрос
+        isRequestReceived: false, // Нет, мы отправители, а не получатели
+      },
     };
   }
 
@@ -180,16 +200,32 @@ export class FriendService {
 
   async getIncomingRequests(userId: number) {
     const requests = await this.prisma.friend.findMany({
-      where: { receiverId: userId, status: FriendStatus.PENDING },
+      where: {
+        receiverId: userId,
+        status: FriendStatus.PENDING,
+      },
       include: {
-        sender: { select: { id: true, username: true } },
+        sender: {
+          select: {
+            id: true,
+            username: true,
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
 
     return requests.map((r) => ({
+      // Данные пользователя (отправителя)
       id: r.sender.id,
       username: r.sender.username,
+
+      // Метаданные отношений (формат PublicUser)
+      isFriend: false, // Так как статус PENDING
+      hasPendingRequest: true, // Запрос существует
+      isRequestReceived: true, // Для получателя (userId) он входящий
+
+      // Дополнительные поля (полезны для списков)
       friendshipId: r.id,
       createdAt: r.createdAt,
     }));
