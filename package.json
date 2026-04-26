@@ -6,7 +6,6 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
-    "generate": "prisma generate",
     "build": "npx prisma generate --schema=./prisma && ./node_modules/.bin/nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
@@ -19,7 +18,10 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "commit": "cz"
+    "commit": "cz",
+    "prisma:build": "prisma-import -s 'prisma/**/*.prisma' -o prisma/schema.prisma",
+    "migrate:dev": "npm run prisma:build && npx prisma migrate dev",
+    "generate": "npm run prisma:build && npx prisma generate"
   },
   "dependencies": {
     "@nestjs/cli": "^11.0.0",
