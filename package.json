@@ -6,12 +6,10 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
-    "build": "npx prisma generate --schema=./prisma && ./node_modules/.bin/nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
-    "start:prod": "node dist/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
     "test:watch": "jest --watch",
@@ -20,8 +18,10 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "commit": "cz",
     "prisma:build": "prisma-import -s 'prisma/**/*.prisma' -o prisma/schema.prisma",
-    "migrate:dev": "npm run prisma:build && npx prisma migrate dev",
-    "generate": "npm run prisma:build && npx prisma generate"
+    "prisma:generate": "npm run prisma:build && prisma generate",
+    "prisma:migrate": "npm run prisma:build && prisma migrate dev",
+    "build": "npm run prisma:build && npx prisma generate && nest build",
+    "start:prod": "npm run prisma:build && npx prisma migrate deploy && node dist/main"
   },
   "dependencies": {
     "@nestjs/cli": "^11.0.0",
@@ -77,6 +77,7 @@
     "lint-staged": "^16.2.3",
     "prettier": "^3.4.2",
     "prisma": "^6.17.1",
+    "prisma-import": "^1.0.5",
     "source-map-support": "^0.5.21",
     "supertest": "^7.0.0",
     "ts-jest": "^29.2.5",
