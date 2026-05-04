@@ -232,10 +232,18 @@ export class CallService {
     const consumer = await transport.consume({
       producerId: payload.producerId,
       rtpCapabilities: payload.rtpCapabilities,
-      paused: false,
+      paused: true,
     });
 
+    // ОБЯЗАТЕЛЬНО: Явный запуск потока
+    await consumer.resume();
+
     peer?.consumers.set(consumer.id, consumer);
+
+    // Можно добавить лог для отладки
+    console.log(
+      `✅ Consumer resumed: ${consumer.id} for producer: ${payload.producerId}`,
+    );
 
     return {
       id: consumer.id,

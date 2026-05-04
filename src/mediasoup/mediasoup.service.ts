@@ -130,6 +130,9 @@ declare module 'mediasoup' {
       producerId: string;
       kind: MediaKind;
       rtpParameters: any;
+      paused: boolean; // Полезно для отладки
+      pause(): Promise<void>;
+      resume(): Promise<void>; // ВОТ ЭТО ТО, ЧТО МЫ ДОБАВИЛИ
       close(): void;
     }
   }
