@@ -53,7 +53,8 @@ export class MediasoupService implements OnModuleInit {
     router: mediasoup.types.Router,
   ): Promise<mediasoup.types.WebRtcTransport> {
     return await router.createWebRtcTransport({
-      listenIps: [{ ip: '127.0.0.1', announcedIp: '127.0.0.1' }],
+      // : '127.0.0.1'
+      listenIps: [{ ip: '0.0.0.0', announcedIp: '185.46.11.122' }],
       enableUdp: true,
       enableTcp: true,
       preferUdp: true,
