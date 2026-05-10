@@ -377,8 +377,18 @@ export class CallService {
   ) {
     const userId = client.user?.id as number;
 
-    // 1. Приведение ID комнаты к числу (защита от String)
-    const targetConvId = Number(payload.conversationId || payload.convId);
+    // Проверяем все возможные варианты имени поля
+    const rawId =
+      payload.conversationId ?? payload.convId ?? payload.conversationId;
+    const targetConvId = Number(rawId);
+
+    // Если всё равно NaN, пишем в лог весь payload, чтобы увидеть правду
+    if (isNaN(targetConvId)) {
+      this.logger.error(
+        `[Consume] RECEIVED NaN! Payload was: ${JSON.stringify(payload)}`,
+      );
+      throw new Error(`Invalid conversation ID: ${rawId}`);
+    }
 
     const room = this.rooms.get(targetConvId);
     if (!room) {
