@@ -18,6 +18,7 @@ import { UserService } from 'src/user/user.service';
 import { FindUserDto } from 'src/user/dto/user.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { PresenceService } from './presence.service';
+import { REQUESTS } from 'src/commands/commands';
 
 //node -e "console.log(require('ulid').ulid())"
 
@@ -92,7 +93,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   // == Пользователи ===
 
-  @SubscribeMessage('users:find')
+  @SubscribeMessage(REQUESTS.usersFind)
   async handleFindUsers(
     @MessageBody() data: FindUserDto & RequestWithId,
     @ConnectedSocket() client: Socket,
@@ -110,7 +111,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   // === Чаты ===
 
-  @SubscribeMessage('dm:create')
+  @SubscribeMessage(REQUESTS.directMessagesCreate)
   async handleDmCreate(
     @MessageBody() data: createDmDto & RequestWithId,
     @ConnectedSocket() client: Socket,
@@ -118,7 +119,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     return await this.dmService.socketEventDmCreate(client, data);
   }
 
-  @SubscribeMessage('dm:list')
+  @SubscribeMessage(REQUESTS.directMessagesList)
   async handleDmList(
     @MessageBody() data: RequestWithId,
     @ConnectedSocket() client: Socket,

@@ -121,15 +121,21 @@ export class CallService {
   // --- Core Mediasoup Методы (типизированные) ---
 
   async createTransport(userId: number, convId: number) {
+    this.logger.debug(
+      `[Transport] Создание для User: ${userId}, Room: ${convId}`,
+    );
     const room = await this.getOrCreateRoom(convId);
     const transport = await this.mediasoupService.createWebRtcTransport(
       room.router,
     );
 
-    // 1. Сохраняем в ОБЩУЮ карту комнаты (ВАЖНО для produce)
+    // Лог портов для проверки фаервола
+    this.logger.log(
+      `[Transport] Создан ID: ${transport.id} (ICE Role: ${transport.iceParameters.role})`,
+    );
+
     room.transports.set(transport.id, transport);
 
-    // 2. Сохраняем в карту конкретного юзера
     let peer = room.peers.get(userId);
     if (!peer) {
       peer = {
@@ -145,7 +151,7 @@ export class CallService {
 
     return {
       id: transport.id,
-      iceParameters: transport.iceParameters as mediasoup.types.WebRtcTransport,
+      iceParameters: transport.iceParameters,
       iceCandidates: transport.iceCandidates,
       dtlsParameters: transport.dtlsParameters,
     };
@@ -163,6 +169,96 @@ export class CallService {
     await transport.connect({ dtlsParameters });
   }
 
+  // async produce(
+  //   userId: number,
+  //   convId: number,
+  //   transportId: string,
+  //   kind: mediasoup.types.MediaKind,
+  //   rtpParameters: mediasoup.types.RtpParameters,
+  // ) {
+  //   const numericConvId = Number(convId);
+  //   const room = this.rooms.get(numericConvId);
+  //   // if (!room) throw new Error(`Room ${convId} not found`);
+
+  //   if (!room) {
+  //     this.logger.error(
+  //       `❌ Комната ${numericConvId} вообще не существует в Map!`,
+  //     );
+  //     throw new Error('Room not found');
+  //   }
+
+  //   this.logger.log(
+  //     `🔎 Ищем транспорт ${transportId} в комнате ${numericConvId}`,
+  //   );
+  //   this.logger.log(
+  //     `📜 Всего транспортов в этой комнате: ${room.transports.size}`,
+  //   );
+
+  //   const transport = room.transports.get(transportId);
+  //   if (!transport) {
+  //     // Выведи в консоль для отладки, что там вообще есть
+  //     console.log(
+  //       'Available transports in room:',
+  //       Array.from(room.transports.keys()),
+  //     );
+  //     throw new Error(`Transport ${transportId} not found in room ${convId}`);
+  //   }
+
+  //   const producer = await transport.produce({ kind, rtpParameters });
+
+  //   // Сохраняем и в комнату, и в пира
+  //   room.producers.set(producer.id, producer);
+  //   room.peers.get(userId)?.producers.set(producer.id, producer);
+
+  //   this.logger.log(
+  //     `🎤 User ${userId} is now producing ${kind} in room ${convId}`,
+  //   );
+
+  //   return producer.id;
+  // }
+
+  // async handleConsume(
+  //   client: Socket,
+  //   payload: {
+  //     conversationId: number;
+  //     producerId: string;
+  //     rtpCapabilities: mediasoup.types.RtpCapabilities;
+  //   },
+  // ) {
+  //   const userId = client.user?.id as number;
+  //   const room = this.rooms.get(payload.conversationId);
+  //   if (!room) throw new Error('Room not found');
+
+  //   const peer = room.peers.get(userId);
+  //   // Для consume обычно нужен отдельный recvTransport.
+  //   // Предположим, берем первый попавшийся или логика предполагает наличие recvTransport
+  //   const transport = Array.from(peer?.transports.values() || [])[0];
+  //   if (!transport) throw new Error('No transport available for consume');
+
+  //   const consumer = await transport.consume({
+  //     producerId: payload.producerId,
+  //     rtpCapabilities: payload.rtpCapabilities,
+  //     paused: true,
+  //   });
+
+  //   // ОБЯЗАТЕЛЬНО: Явный запуск потока
+  //   await consumer.resume();
+
+  //   peer?.consumers.set(consumer.id, consumer);
+
+  //   // Можно добавить лог для отладки
+  //   console.log(
+  //     `✅ Consumer resumed: ${consumer.id} for producer: ${payload.producerId}`,
+  //   );
+
+  //   return {
+  //     id: consumer.id,
+  //     producerId: payload.producerId,
+  //     kind: consumer.kind,
+  //     rtpParameters: consumer.rtpParameters,
+  //   };
+  // }
+
   async produce(
     userId: number,
     convId: number,
@@ -170,9 +266,11 @@ export class CallService {
     kind: mediasoup.types.MediaKind,
     rtpParameters: mediasoup.types.RtpParameters,
   ) {
+    this.logger.log(`[Produce] Запрос от юзера ${userId} (Kind: ${kind})`);
+
     const numericConvId = Number(convId);
-    const room = this.rooms.get(numericConvId);
-    // if (!room) throw new Error(`Room ${convId} not found`);
+    const room = this.rooms.get(Number(convId));
+    const transport = room?.transports.get(transportId);
 
     if (!room) {
       this.logger.error(
@@ -181,33 +279,19 @@ export class CallService {
       throw new Error('Room not found');
     }
 
-    this.logger.log(
-      `🔎 Ищем транспорт ${transportId} в комнате ${numericConvId}`,
-    );
-    this.logger.log(
-      `📜 Всего транспортов в этой комнате: ${room.transports.size}`,
-    );
-
-    const transport = room.transports.get(transportId);
     if (!transport) {
-      // Выведи в консоль для отладки, что там вообще есть
-      console.log(
-        'Available transports in room:',
-        Array.from(room.transports.keys()),
-      );
-      throw new Error(`Transport ${transportId} not found in room ${convId}`);
+      this.logger.error(`[Produce] Транспорт ${transportId} не найден!`);
+      throw new Error('Transport not found');
     }
 
     const producer = await transport.produce({ kind, rtpParameters });
-
-    // Сохраняем и в комнату, и в пира
     room.producers.set(producer.id, producer);
     room.peers.get(userId)?.producers.set(producer.id, producer);
 
     this.logger.log(
-      `🎤 User ${userId} is now producing ${kind} in room ${convId}`,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      `[Produce] ✅ Успешно. ProducerID: ${producer.id} (SSRC: ${producer.rtpParameters.encodings[0]?.ssrc})`,
     );
-
     return producer.id;
   }
 
@@ -220,38 +304,71 @@ export class CallService {
     },
   ) {
     const userId = client.user?.id as number;
-    const room = this.rooms.get(payload.conversationId);
-    if (!room) throw new Error('Room not found');
+    const { conversationId, producerId, rtpCapabilities } = payload;
 
-    const peer = room.peers.get(userId);
-    // Для consume обычно нужен отдельный recvTransport.
-    // Предположим, берем первый попавшийся или логика предполагает наличие recvTransport
-    const transport = Array.from(peer?.transports.values() || [])[0];
-    if (!transport) throw new Error('No transport available for consume');
-
-    const consumer = await transport.consume({
-      producerId: payload.producerId,
-      rtpCapabilities: payload.rtpCapabilities,
-      paused: true,
-    });
-
-    // ОБЯЗАТЕЛЬНО: Явный запуск потока
-    await consumer.resume();
-
-    peer?.consumers.set(consumer.id, consumer);
-
-    // Можно добавить лог для отладки
-    console.log(
-      `✅ Consumer resumed: ${consumer.id} for producer: ${payload.producerId}`,
+    this.logger.log(
+      `[Consume] Юзер ${userId} хочет слушать продюсера ${producerId}`,
     );
 
-    return {
-      id: consumer.id,
-      producerId: payload.producerId,
-      kind: consumer.kind,
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      rtpParameters: consumer.rtpParameters,
-    };
+    const room = this.rooms.get(conversationId);
+    if (!room) throw new Error('Room not found');
+
+    // Проверяем, существует ли продюсер вообще
+    const producer = room.producers.get(producerId);
+    if (!producer) {
+      this.logger.warn(
+        `[Consume] ❌ Продюсер ${producerId} не найден в комнате!`,
+      );
+      throw new Error('Producer not found');
+    }
+
+    const peer = room.peers.get(userId);
+    // Находим recvTransport (обычно он создается вторым)
+    const transport = Array.from(peer?.transports.values() || []).find(
+      (t) => t.id !== producerId,
+    );
+
+    if (!transport) {
+      this.logger.error(
+        `[Consume] ❌ Нет подходящего транспорта для приема у юзера ${userId}`,
+      );
+      throw new Error('No transport available');
+    }
+
+    try {
+      const consumer = await transport.consume({
+        producerId,
+        rtpCapabilities,
+        paused: true, // Сначала создаем на паузе (стандарт mediasoup)
+      });
+
+      this.logger.debug(
+        `[Consume] Объект создан, ID: ${consumer.id}. Состояние паузы: ${consumer.paused}`,
+      );
+
+      // КЛЮЧЕВОЙ МОМЕНТ
+      await consumer.resume();
+
+      this.logger.log(
+        `[Consume] ✅ Поток запущен (Resume). ConsumerID: ${consumer.id}`,
+      );
+
+      peer?.consumers.set(consumer.id, consumer);
+
+      return {
+        id: consumer.id,
+        producerId,
+        kind: consumer.kind,
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        rtpParameters: consumer.rtpParameters,
+      };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (error: any) {
+      this.logger.error(
+        `[Consume] ❌ Ошибка при создании консьюмера: ${error}`,
+      );
+      throw error;
+    }
   }
 
   // --- Выход и завершение ---

@@ -103,7 +103,10 @@ declare module 'mediasoup' {
 
     export interface WebRtcTransport {
       id: string;
-      iceParameters: any;
+      iceParameters: {
+        [x: string]: any;
+        role: any;
+      };
       iceCandidates: any[];
       dtlsParameters: DtlsParameters;
       connect(params: { dtlsParameters: DtlsParameters }): Promise<void>;
@@ -120,6 +123,7 @@ declare module 'mediasoup' {
     }
 
     export interface Producer {
+      [x: string]: any;
       id: string;
       kind: MediaKind;
       close(): void;

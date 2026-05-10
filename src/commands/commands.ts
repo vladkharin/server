@@ -1,4 +1,9 @@
 export const REQUESTS = {
+  usersFind: 'users:find',
+
+  directMessagesCreate: 'dm:create',
+  directMessagesList: 'dm:list',
+
   friendRequest: 'friend:request',
   friendRespond: 'friend:respond',
   friendList: 'friend:list',
