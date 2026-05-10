@@ -296,12 +296,82 @@ export class CallService {
     return producer.id;
   }
 
+  // async handleConsume(
+  //   client: Socket,
+  //   payload: {
+  //     conversationId: number;
+  //     producerId: string;
+  //     rtpCapabilities: mediasoup.types.RtpCapabilities;
+  //   },
+  // ) {
+  //   const userId = client.user?.id as number;
+  //   const room = this.rooms.get(payload.conversationId);
+  //   if (!room) throw new Error('Room not found');
+
+  //   const peer = room.peers.get(userId);
+  //   const producer = room.producers.get(payload.producerId);
+
+  //   // Пытаемся найти recv-транспорт (тот, который НЕ использовался для продюсирования этим юзером)
+  //   // Это временный костыль, пока ты не передаешь transportId явно с фронта
+  //   const transport = Array.from(peer?.transports.values() || []).reverse()[0];
+
+  //   if (!transport) throw new Error('No transport available for consume');
+
+  //   const consumer = await transport.consume({
+  //     producerId: payload.producerId,
+  //     rtpCapabilities: payload.rtpCapabilities,
+  //     paused: true,
+  //   });
+
+  //   await consumer.resume();
+
+  //   this.logger.log(
+  //     `[STREAMS] Consumer resumed: ${consumer.id} for producer: ${payload.producerId}`,
+  //   );
+
+  //   // --- ТЕСТОВАЯ ДИАГНОСТИКА ЧЕРЕЗ 5 СЕКУНД ---
+  //   // eslint-disable-next-line @typescript-eslint/no-misused-promises
+  //   setTimeout(async () => {
+  //     try {
+  //       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
+  //       const cStats = await consumer.getStats();
+  //       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
+  //       const pStats = await producer?.getStats();
+
+  //       this.logger.debug(`--- DIAGNOSTICS FOR USER ${userId} ---`);
+  //       this.logger.debug(
+  //         `Producer [${payload.producerId}] Score: ${JSON.stringify(producer?.score)}`,
+  //       );
+  //       this.logger.debug(
+  //         `Consumer [${consumer.id}] Score: ${JSON.stringify(consumer.score)}`,
+  //       );
+  //       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+  //       this.logger.debug(`Consumer Bytes Sent: ${cStats[0]?.bytesSent || 0}`);
+  //       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+  //       this.logger.debug(`Consumer Bytes Sent: ${pStats[0]?.bytesSent || 0}`);
+  //       this.logger.debug(`---------------------------------------`);
+  //     } catch (e) {
+  //       this.logger.error('Stats failed', e);
+  //     }
+  //   }, 5000);
+
+  //   return {
+  //     id: consumer.id,
+  //     producerId: payload.producerId,
+  //     kind: consumer.kind,
+  //     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+  //     rtpParameters: consumer.rtpParameters,
+  //   };
+  // }
+
+  // В CallService.ts
   async handleConsume(
     client: Socket,
     payload: {
       conversationId: number;
       producerId: string;
       rtpCapabilities: mediasoup.types.RtpCapabilities;
+      transportId?: string; // Добавляем поле
     },
   ) {
     const userId = client.user?.id as number;
@@ -309,13 +379,28 @@ export class CallService {
     if (!room) throw new Error('Room not found');
 
     const peer = room.peers.get(userId);
-    const producer = room.producers.get(payload.producerId);
 
-    // Пытаемся найти recv-транспорт (тот, который НЕ использовался для продюсирования этим юзером)
-    // Это временный костыль, пока ты не передаешь transportId явно с фронта
-    const transport = Array.from(peer?.transports.values() || []).reverse()[0];
+    // КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ:
+    let transport: mediasoup.types.WebRtcTransport;
+    if (payload.transportId) {
+      transport = room.transports.get(payload.transportId)!;
+      this.logger.log(
+        `[Consume] Используем указанный транспорт: ${payload.transportId}`,
+      );
+    } else {
+      // Фолбэк: ищем любой транспорт юзера, который НЕ является его текущим send-транспортом
+      transport = Array.from(peer?.transports.values() || []).find(
+        (t) => t.id !== payload.producerId,
+      )!;
+      this.logger.warn(
+        `[Consume] transportId не передан, выбран: ${transport?.id}`,
+      );
+    }
 
-    if (!transport) throw new Error('No transport available for consume');
+    if (!transport) {
+      this.logger.error(`[Consume] Транспорт для юзера ${userId} не найден!`);
+      throw new Error('No transport available for consume');
+    }
 
     const consumer = await transport.consume({
       producerId: payload.producerId,
@@ -325,45 +410,20 @@ export class CallService {
 
     await consumer.resume();
 
+    // Мониторинг "живости"
     this.logger.log(
-      `[STREAMS] Consumer resumed: ${consumer.id} for producer: ${payload.producerId}`,
+      `[STREAMS] Consumer Resume OK. ID: ${consumer.id}. Score: ${JSON.stringify(consumer.score)}`,
     );
 
-    // --- ТЕСТОВАЯ ДИАГНОСТИКА ЧЕРЕЗ 5 СЕКУНД ---
-    // eslint-disable-next-line @typescript-eslint/no-misused-promises
-    setTimeout(async () => {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
-        const cStats = await consumer.getStats();
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
-        const pStats = await producer?.getStats();
-
-        this.logger.debug(`--- DIAGNOSTICS FOR USER ${userId} ---`);
-        this.logger.debug(
-          `Producer [${payload.producerId}] Score: ${JSON.stringify(producer?.score)}`,
-        );
-        this.logger.debug(
-          `Consumer [${consumer.id}] Score: ${JSON.stringify(consumer.score)}`,
-        );
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-        this.logger.debug(`Consumer Bytes Sent: ${cStats[0]?.bytesSent || 0}`);
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-        this.logger.debug(`Consumer Bytes Sent: ${pStats[0]?.bytesSent || 0}`);
-        this.logger.debug(`---------------------------------------`);
-      } catch (e) {
-        this.logger.error('Stats failed', e);
-      }
-    }, 5000);
+    peer?.consumers.set(consumer.id, consumer);
 
     return {
       id: consumer.id,
       producerId: payload.producerId,
       kind: consumer.kind,
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       rtpParameters: consumer.rtpParameters,
     };
   }
-
   // --- Выход и завершение ---
 
   async handleLeaveRoom(
