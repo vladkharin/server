@@ -130,6 +130,7 @@ declare module 'mediasoup' {
     }
 
     export interface Consumer {
+      [x: string]: any;
       id: string;
       producerId: string;
       kind: MediaKind;

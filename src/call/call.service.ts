@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { Injectable, Logger } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { MediasoupService } from 'src/mediasoup/mediasoup.service';
@@ -304,71 +305,63 @@ export class CallService {
     },
   ) {
     const userId = client.user?.id as number;
-    const { conversationId, producerId, rtpCapabilities } = payload;
-
-    this.logger.log(
-      `[Consume] Юзер ${userId} хочет слушать продюсера ${producerId}`,
-    );
-
-    const room = this.rooms.get(conversationId);
+    const room = this.rooms.get(payload.conversationId);
     if (!room) throw new Error('Room not found');
 
-    // Проверяем, существует ли продюсер вообще
-    const producer = room.producers.get(producerId);
-    if (!producer) {
-      this.logger.warn(
-        `[Consume] ❌ Продюсер ${producerId} не найден в комнате!`,
-      );
-      throw new Error('Producer not found');
-    }
-
     const peer = room.peers.get(userId);
-    // Находим recvTransport (обычно он создается вторым)
-    const transport = Array.from(peer?.transports.values() || []).find(
-      (t) => t.id !== producerId,
+    const producer = room.producers.get(payload.producerId);
+
+    // Пытаемся найти recv-транспорт (тот, который НЕ использовался для продюсирования этим юзером)
+    // Это временный костыль, пока ты не передаешь transportId явно с фронта
+    const transport = Array.from(peer?.transports.values() || []).reverse()[0];
+
+    if (!transport) throw new Error('No transport available for consume');
+
+    const consumer = await transport.consume({
+      producerId: payload.producerId,
+      rtpCapabilities: payload.rtpCapabilities,
+      paused: true,
+    });
+
+    await consumer.resume();
+
+    this.logger.log(
+      `[STREAMS] Consumer resumed: ${consumer.id} for producer: ${payload.producerId}`,
     );
 
-    if (!transport) {
-      this.logger.error(
-        `[Consume] ❌ Нет подходящего транспорта для приема у юзера ${userId}`,
-      );
-      throw new Error('No transport available');
-    }
+    // --- ТЕСТОВАЯ ДИАГНОСТИКА ЧЕРЕЗ 5 СЕКУНД ---
+    // eslint-disable-next-line @typescript-eslint/no-misused-promises
+    setTimeout(async () => {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
+        const cStats = await consumer.getStats();
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
+        const pStats = await producer?.getStats();
 
-    try {
-      const consumer = await transport.consume({
-        producerId,
-        rtpCapabilities,
-        paused: true, // Сначала создаем на паузе (стандарт mediasoup)
-      });
+        this.logger.debug(`--- DIAGNOSTICS FOR USER ${userId} ---`);
+        this.logger.debug(
+          `Producer [${payload.producerId}] Score: ${JSON.stringify(producer?.score)}`,
+        );
+        this.logger.debug(
+          `Consumer [${consumer.id}] Score: ${JSON.stringify(consumer.score)}`,
+        );
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        this.logger.debug(`Consumer Bytes Sent: ${cStats[0]?.bytesSent || 0}`);
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        this.logger.debug(`Consumer Bytes Sent: ${pStats[0]?.bytesSent || 0}`);
+        this.logger.debug(`---------------------------------------`);
+      } catch (e) {
+        this.logger.error('Stats failed', e);
+      }
+    }, 5000);
 
-      this.logger.debug(
-        `[Consume] Объект создан, ID: ${consumer.id}. Состояние паузы: ${consumer.paused}`,
-      );
-
-      // КЛЮЧЕВОЙ МОМЕНТ
-      await consumer.resume();
-
-      this.logger.log(
-        `[Consume] ✅ Поток запущен (Resume). ConsumerID: ${consumer.id}`,
-      );
-
-      peer?.consumers.set(consumer.id, consumer);
-
-      return {
-        id: consumer.id,
-        producerId,
-        kind: consumer.kind,
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        rtpParameters: consumer.rtpParameters,
-      };
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (error: any) {
-      this.logger.error(
-        `[Consume] ❌ Ошибка при создании консьюмера: ${error}`,
-      );
-      throw error;
-    }
+    return {
+      id: consumer.id,
+      producerId: payload.producerId,
+      kind: consumer.kind,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      rtpParameters: consumer.rtpParameters,
+    };
   }
 
   // --- Выход и завершение ---
