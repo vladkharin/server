@@ -103,6 +103,7 @@ declare module 'mediasoup' {
 
     export interface WebRtcTransport {
       id: string;
+      appData: any;
       iceParameters: {
         [x: string]: any;
         role: any;

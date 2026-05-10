@@ -368,61 +368,98 @@ export class CallService {
   async handleConsume(
     client: Socket,
     payload: {
-      conversationId: number;
+      conversationId?: number;
+      convId?: number; // На случай, если фронтенд пришлет convId
       producerId: string;
       rtpCapabilities: mediasoup.types.RtpCapabilities;
-      transportId?: string; // Добавляем поле
+      transportId?: string;
     },
   ) {
     const userId = client.user?.id as number;
-    const room = this.rooms.get(payload.conversationId);
-    if (!room) throw new Error('Room not found');
+
+    // 1. Приведение ID комнаты к числу (защита от String)
+    const targetConvId = Number(payload.conversationId || payload.convId);
+
+    const room = this.rooms.get(targetConvId);
+    if (!room) {
+      const activeRooms = Array.from(this.rooms.keys()).join(', ');
+      this.logger.error(
+        `[Consume] Room ${targetConvId} not found. Active: [${activeRooms}]`,
+      );
+      throw new Error(`Room not found: ${targetConvId}`);
+    }
 
     const peer = room.peers.get(userId);
+    if (!peer) {
+      this.logger.error(
+        `[Consume] User ${userId} not found in room ${targetConvId}`,
+      );
+      throw new Error('Peer not found in room');
+    }
 
-    // КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ:
-    let transport: mediasoup.types.WebRtcTransport;
+    // 2. Логика выбора транспорта
+    let transport: mediasoup.types.WebRtcTransport | undefined; // Используем any, чтобы обойти ограничения неполного интерфейса
+
     if (payload.transportId) {
-      transport = room.transports.get(payload.transportId)!;
-      this.logger.log(
-        `[Consume] Используем указанный транспорт: ${payload.transportId}`,
-      );
-    } else {
-      // Фолбэк: ищем любой транспорт юзера, который НЕ является его текущим send-транспортом
-      transport = Array.from(peer?.transports.values() || []).find(
-        (t) => t.id !== payload.producerId,
-      )!;
-      this.logger.warn(
-        `[Consume] transportId не передан, выбран: ${transport?.id}`,
-      );
+      // Ищем транспорт в общем хранилище комнаты по ID
+      transport = room.transports.get(payload.transportId);
+      if (transport) {
+        this.logger.log(
+          `[Consume] Используем транспорт по ID: ${payload.transportId}`,
+        );
+      }
+    }
+
+    // Если ID не передан или транспорт не найден — берем последний созданный у этого юзера
+    if (!transport) {
+      const peerTransports = Array.from(peer.transports.values());
+      if (peerTransports.length > 0) {
+        // Берем последний (обычно это recvTransport, так как он создается вторым)
+        transport = peerTransports[peerTransports.length - 1];
+        this.logger.warn(
+          `[Consume] transportId не найден, выбран последний транспорт пира: ${transport?.id}`,
+        );
+      }
     }
 
     if (!transport) {
-      this.logger.error(`[Consume] Транспорт для юзера ${userId} не найден!`);
+      this.logger.error(
+        `[Consume] У пользователя ${userId} нет доступных транспортов!`,
+      );
       throw new Error('No transport available for consume');
     }
 
-    const consumer = await transport.consume({
-      producerId: payload.producerId,
-      rtpCapabilities: payload.rtpCapabilities,
-      paused: true,
-    });
+    try {
+      // 3. Создание Consumer
+      const consumer = await transport.consume({
+        producerId: payload.producerId,
+        rtpCapabilities: payload.rtpCapabilities,
+        paused: true, // Всегда создаем на паузе
+      });
 
-    await consumer.resume();
+      // 4. Обязательный Resume
+      await consumer.resume();
 
-    // Мониторинг "живости"
-    this.logger.log(
-      `[STREAMS] Consumer Resume OK. ID: ${consumer.id}. Score: ${JSON.stringify(consumer.score)}`,
-    );
+      // Мониторинг для отладки
+      this.logger.log(
+        `[STREAMS] Consumer создан и запущен: ${consumer.id}. Producer: ${payload.producerId}`,
+      );
 
-    peer?.consumers.set(consumer.id, consumer);
+      // Сохраняем в коллекцию пира для контроля
+      peer.consumers.set(consumer.id, consumer);
 
-    return {
-      id: consumer.id,
-      producerId: payload.producerId,
-      kind: consumer.kind,
-      rtpParameters: consumer.rtpParameters,
-    };
+      // 5. Возвращаем данные на фронтенд
+      return {
+        id: consumer.id,
+        producerId: payload.producerId,
+        kind: consumer.kind,
+        rtpParameters: consumer.rtpParameters,
+      };
+    } catch (error) {
+      // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
+      this.logger.error(`[Consume] Ошибка при создании consumer: ${error}`);
+      throw error;
+    }
   }
   // --- Выход и завершение ---
 
