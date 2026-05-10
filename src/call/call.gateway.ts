@@ -35,6 +35,7 @@ interface ProduceDto extends CallBaseDto {
 interface ConsumeDto extends CallBaseDto {
   producerId: string;
   rtpCapabilities: mediasoup.types.RtpCapabilities;
+  transportId: string;
 }
 
 @WebSocketGateway({
@@ -193,6 +194,7 @@ export class CallGateway {
         conversationId: data.conversationId,
         producerId: data.producerId,
         rtpCapabilities: data.rtpCapabilities,
+        transportId: data.transportId,
       });
       return { response: result, id: data.id };
     } catch (e: unknown) {
