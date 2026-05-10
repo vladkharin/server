@@ -14,7 +14,7 @@ import { PresenceService } from 'src/websocket/presence.service';
 // Интерфейсы для типизации
 interface CallBaseDto {
   id: string;
-  convId: number;
+  conversationId: number;
 }
 
 interface CreateTransportDto extends CallBaseDto {
@@ -112,7 +112,7 @@ export class CallGateway {
     try {
       const transportParams = await this.callService.createTransport(
         userId,
-        data.convId,
+        data.conversationId,
       );
       return { response: transportParams, id: data.id };
     } catch (e: unknown) {
@@ -134,7 +134,7 @@ export class CallGateway {
     try {
       await this.callService.connectTransport(
         userId,
-        data.convId,
+        data.conversationId,
         data.transportId,
         data.dtlsParameters,
       );
@@ -160,18 +160,18 @@ export class CallGateway {
     try {
       const producerId = await this.callService.produce(
         userId,
-        data.convId,
+        data.conversationId,
         data.transportId,
         data.kind,
         data.rtpParameters,
       );
 
       // Оповещаем остальных в комнате чата
-      client.to(`chat:${data.convId}`).emit('call:newProducer', {
+      client.to(`chat:${data.conversationId}`).emit('call:newProducer', {
         userId,
         producerId,
         kind: data.kind,
-        conversationId: data.convId,
+        conversationId: data.conversationId,
       });
 
       return { response: { id: producerId }, id: data.id };
@@ -190,7 +190,7 @@ export class CallGateway {
   ) {
     try {
       const result = await this.callService.handleConsume(client, {
-        conversationId: data.convId,
+        conversationId: data.conversationId,
         producerId: data.producerId,
         rtpCapabilities: data.rtpCapabilities,
       });

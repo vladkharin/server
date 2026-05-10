@@ -34,23 +34,23 @@ export class CallService {
 
   // --- Вспомогательные методы ---
 
-  async getOrCreateRoom(convId: number): Promise<CallRoom> {
-    let room = this.rooms.get(convId);
+  async getOrCreateRoom(conversationId: number): Promise<CallRoom> {
+    let room = this.rooms.get(conversationId);
     if (!room) {
-      this.logger.log(`🛠 Создание новой комнаты: ${convId}`);
+      this.logger.log(`🛠 Создание новой комнаты: ${conversationId}`);
       const router = await this.mediasoupService.createRouter();
       room = {
-        conversationId: convId,
+        conversationId: conversationId,
         router: router,
         transports: new Map(), // Инициализируем
         producers: new Map(), // Инициализируем
         consumers: new Map(), // Инициализируем
         peers: new Map(),
       };
-      this.rooms.set(convId, room);
+      this.rooms.set(conversationId, room);
 
       await this.prisma.conversation.update({
-        where: { id: convId },
+        where: { id: conversationId },
         data: { callActive: true, callStartedAt: new Date() },
       });
     }
@@ -121,11 +121,11 @@ export class CallService {
 
   // --- Core Mediasoup Методы (типизированные) ---
 
-  async createTransport(userId: number, convId: number) {
+  async createTransport(userId: number, conversationId: number) {
     this.logger.debug(
-      `[Transport] Создание для User: ${userId}, Room: ${convId}`,
+      `[Transport] Создание для User: ${userId}, Room: ${conversationId}`,
     );
-    const room = await this.getOrCreateRoom(convId);
+    const room = await this.getOrCreateRoom(conversationId);
     const transport = await this.mediasoupService.createWebRtcTransport(
       room.router,
     );
@@ -160,11 +160,11 @@ export class CallService {
 
   async connectTransport(
     userId: number,
-    convId: number,
+    conversationId: number,
     transportId: string,
     dtlsParameters: mediasoup.types.DtlsParameters,
   ) {
-    const room = this.rooms.get(convId);
+    const room = this.rooms.get(conversationId);
     const transport = room?.peers.get(userId)?.transports.get(transportId);
     if (!transport) throw new Error('Transport not found');
     await transport.connect({ dtlsParameters });
@@ -172,24 +172,24 @@ export class CallService {
 
   // async produce(
   //   userId: number,
-  //   convId: number,
+  //   conversationId: number,
   //   transportId: string,
   //   kind: mediasoup.types.MediaKind,
   //   rtpParameters: mediasoup.types.RtpParameters,
   // ) {
-  //   const numericConvId = Number(convId);
-  //   const room = this.rooms.get(numericConvId);
-  //   // if (!room) throw new Error(`Room ${convId} not found`);
+  //   const numericconversationId = Number(conversationId);
+  //   const room = this.rooms.get(numericconversationId);
+  //   // if (!room) throw new Error(`Room ${conversationId} not found`);
 
   //   if (!room) {
   //     this.logger.error(
-  //       `❌ Комната ${numericConvId} вообще не существует в Map!`,
+  //       `❌ Комната ${numericconversationId} вообще не существует в Map!`,
   //     );
   //     throw new Error('Room not found');
   //   }
 
   //   this.logger.log(
-  //     `🔎 Ищем транспорт ${transportId} в комнате ${numericConvId}`,
+  //     `🔎 Ищем транспорт ${transportId} в комнате ${numericconversationId}`,
   //   );
   //   this.logger.log(
   //     `📜 Всего транспортов в этой комнате: ${room.transports.size}`,
@@ -202,7 +202,7 @@ export class CallService {
   //       'Available transports in room:',
   //       Array.from(room.transports.keys()),
   //     );
-  //     throw new Error(`Transport ${transportId} not found in room ${convId}`);
+  //     throw new Error(`Transport ${transportId} not found in room ${conversationId}`);
   //   }
 
   //   const producer = await transport.produce({ kind, rtpParameters });
@@ -212,7 +212,7 @@ export class CallService {
   //   room.peers.get(userId)?.producers.set(producer.id, producer);
 
   //   this.logger.log(
-  //     `🎤 User ${userId} is now producing ${kind} in room ${convId}`,
+  //     `🎤 User ${userId} is now producing ${kind} in room ${conversationId}`,
   //   );
 
   //   return producer.id;
@@ -262,20 +262,20 @@ export class CallService {
 
   async produce(
     userId: number,
-    convId: number,
+    conversationId: number,
     transportId: string,
     kind: mediasoup.types.MediaKind,
     rtpParameters: mediasoup.types.RtpParameters,
   ) {
     this.logger.log(`[Produce] Запрос от юзера ${userId} (Kind: ${kind})`);
 
-    const numericConvId = Number(convId);
-    const room = this.rooms.get(Number(convId));
+    const numericconversationId = Number(conversationId);
+    const room = this.rooms.get(Number(conversationId));
     const transport = room?.transports.get(transportId);
 
     if (!room) {
       this.logger.error(
-        `❌ Комната ${numericConvId} вообще не существует в Map!`,
+        `❌ Комната ${numericconversationId} вообще не существует в Map!`,
       );
       throw new Error('Room not found');
     }
@@ -369,7 +369,6 @@ export class CallService {
     client: Socket,
     payload: {
       conversationId?: number;
-      convId?: number; // На случай, если фронтенд пришлет convId
       producerId: string;
       rtpCapabilities: mediasoup.types.RtpCapabilities;
       transportId?: string;
@@ -378,31 +377,30 @@ export class CallService {
     const userId = client.user?.id as number;
 
     // Проверяем все возможные варианты имени поля
-    const rawId =
-      payload.conversationId ?? payload.convId ?? payload.conversationId;
-    const targetConvId = Number(rawId);
+    const rawId = payload.conversationId;
+    const targetconversationId = Number(rawId);
 
     // Если всё равно NaN, пишем в лог весь payload, чтобы увидеть правду
-    if (isNaN(targetConvId)) {
+    if (isNaN(targetconversationId)) {
       this.logger.error(
         `[Consume] RECEIVED NaN! Payload was: ${JSON.stringify(payload)}`,
       );
       throw new Error(`Invalid conversation ID: ${rawId}`);
     }
 
-    const room = this.rooms.get(targetConvId);
+    const room = this.rooms.get(targetconversationId);
     if (!room) {
       const activeRooms = Array.from(this.rooms.keys()).join(', ');
       this.logger.error(
-        `[Consume] Room ${targetConvId} not found. Active: [${activeRooms}]`,
+        `[Consume] Room ${targetconversationId} not found. Active: [${activeRooms}]`,
       );
-      throw new Error(`Room not found: ${targetConvId}`);
+      throw new Error(`Room not found: ${targetconversationId}`);
     }
 
     const peer = room.peers.get(userId);
     if (!peer) {
       this.logger.error(
-        `[Consume] User ${userId} not found in room ${targetConvId}`,
+        `[Consume] User ${userId} not found in room ${targetconversationId}`,
       );
       throw new Error('Peer not found in room');
     }
@@ -486,30 +484,34 @@ export class CallService {
     return { success: true };
   }
 
-  private async cleanupPeer(userId: number, convId: number, server: Server) {
-    const room = this.rooms.get(convId);
+  private async cleanupPeer(
+    userId: number,
+    conversationId: number,
+    server: Server,
+  ) {
+    const room = this.rooms.get(conversationId);
     if (!room) return;
 
     const peer = room.peers.get(userId);
     if (peer) {
       peer.transports.forEach((t) => t.close());
       room.peers.delete(userId);
-      server.to(`chat:${convId}`).emit('call:peerLeft', { userId });
+      server.to(`chat:${conversationId}`).emit('call:peerLeft', { userId });
     }
 
     if (room.peers.size === 0) {
       room.router.close();
-      this.rooms.delete(convId);
+      this.rooms.delete(conversationId);
       await this.prisma.conversation.update({
-        where: { id: convId },
+        where: { id: conversationId },
         data: { callActive: false },
       });
     }
   }
 
   async handleGlobalDisconnect(userId: number, server: Server) {
-    for (const convId of this.rooms.keys()) {
-      await this.cleanupPeer(userId, convId, server);
+    for (const conversationId of this.rooms.keys()) {
+      await this.cleanupPeer(userId, conversationId, server);
     }
   }
 }
