@@ -4,16 +4,21 @@ import { genSalt, hash } from 'bcryptjs';
 import type { User } from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { PublicUser } from 'src/types/types';
-
+interface FriendshipStatus {
+  hasPendingRequest: boolean;
+  isFriend: boolean;
+  isRequestReceived: boolean;
+}
 @Injectable()
 export class UserService {
   constructor(private readonly prisma: PrismaService) {}
+
+  // --- Базовые методы (уже были) ---
 
   async createUser(dto: CreateUserDto) {
     const salt = await genSalt(10);
     const hashPassword = await hash(dto.password, salt);
     const data = { ...dto, password: hashPassword };
-
     return this.prisma.user.create({ data });
   }
 
@@ -29,6 +34,81 @@ export class UserService {
     });
   }
 
+  // --- НОВЫЕ МЕТОДЫ ДЛЯ СОЦСЕТЕЙ (OAuth) ---
+
+  /**
+   * Найти пользователя по Email (уникальное поле)
+   */
+  async findByEmail(email: string): Promise<User | null> {
+    return this.prisma.user.findUnique({
+      where: { email },
+    });
+  }
+
+  /**
+   * Найти пользователя по ID провайдера (например, Yandex ID)
+   */
+  async findBySocialId(
+    provider: string,
+    providerId: string,
+  ): Promise<User | null> {
+    return this.prisma.user.findFirst({
+      where: {
+        socialAccounts: {
+          some: {
+            provider,
+            providerId,
+          },
+        },
+      },
+    });
+  }
+
+  /**
+   * Создать нового пользователя через соцсеть.
+   * Пароль не указываем, так как вход через OAuth.
+   */
+  async createSocialUser(data: {
+    email: string;
+    username: string;
+    provider: string;
+    providerId: string;
+  }) {
+    return this.prisma.user.create({
+      data: {
+        email: data.email,
+        username: data.username,
+        // password остается null по умолчанию
+        socialAccounts: {
+          create: {
+            provider: data.provider,
+            providerId: data.providerId,
+          },
+        },
+      },
+    });
+  }
+
+  /**
+   * Привязать существующий аккаунт пользователя к новой соцсети.
+   * Например, если пользователь зашел под тем же Email, но другим способом.
+   */
+  async linkSocialAccount(
+    userId: number,
+    provider: string,
+    providerId: string,
+  ) {
+    return this.prisma.socialAccount.create({
+      data: {
+        userId,
+        provider,
+        providerId,
+      },
+    });
+  }
+
+  // --- Методы для чатов и поиска (уже были) ---
+
   async getUserChats(userId: number) {
     const PUBLIC_USER_SELECT = {
       id: true,
@@ -39,19 +119,14 @@ export class UserService {
 
     const conversations = await this.prisma.conversation.findMany({
       where: {
-        members: {
-          some: { userId },
-        },
+        members: { some: { userId } },
       },
       include: {
         members: {
           include: {
-            user: {
-              select: PUBLIC_USER_SELECT,
-            },
+            user: { select: PUBLIC_USER_SELECT },
           },
         },
-        // Можно сразу подтянуть последнее сообщение для превью
         messages: {
           take: 1,
           orderBy: { createdAt: 'desc' },
@@ -59,10 +134,7 @@ export class UserService {
       },
     });
 
-    // Трансформируем вывод
     return conversations.map((conv) => {
-      // Находим "другого" пользователя (не меня)
-      // Если это групповой чат, здесь будет массив других людей
       const otherMember = conv.members.find((m) => m.userId !== userId);
       const lastMessage = conv.messages[0] || null;
 
@@ -75,7 +147,6 @@ export class UserService {
               createdAt: lastMessage.createdAt,
             }
           : null,
-        // Выносим данные собеседника на верхний уровень
         interlocutor: otherMember?.user || null,
       };
     });
@@ -90,7 +161,6 @@ export class UserService {
       username: true,
     } as const;
 
-    // 🔹 1. Получаем базовых пользователей
     const users = await this.prisma.user.findMany({
       where: {
         ...(currentUserId && { NOT: { id: currentUserId } }),
@@ -100,7 +170,6 @@ export class UserService {
       take: 10,
     });
 
-    // 🔹 2. Если нет текущего юзера — возвращаем список с дефолтными статусами
     if (!currentUserId) {
       return users.map((user) => ({
         ...user,
@@ -110,7 +179,6 @@ export class UserService {
       })) as PublicUser[];
     }
 
-    // 🔹 3. Получаем отношения текущего юзера с найденными пользователями
     const relationships = await this.prisma.friend.findMany({
       where: {
         OR: [
@@ -124,27 +192,14 @@ export class UserService {
           },
         ],
       },
-      select: {
-        senderId: true,
-        receiverId: true,
-        status: true,
-      },
     });
 
-    // 🔹 4. Создаём карту статусов
-    const statusMap = new Map<
-      number,
-      {
-        hasPendingRequest: boolean;
-        isFriend: boolean;
-        isRequestReceived: boolean;
-      }
-    >();
+    // 2. Указываем тип в Map вместо any
+    const statusMap = new Map<number, FriendshipStatus>();
 
     for (const rel of relationships) {
       const otherId =
         rel.senderId === currentUserId ? rel.receiverId : rel.senderId;
-
       statusMap.set(otherId, {
         hasPendingRequest: rel.status === 'PENDING',
         isFriend: rel.status === 'ACCEPTED',
@@ -153,8 +208,8 @@ export class UserService {
       });
     }
 
-    // 🔹 5. Объединяем данные, гарантируя наличие всех полей
-    return users.map((user) => {
+    // 3. Явно типизируем возвращаемый объект в map
+    return users.map((user): PublicUser => {
       const status = statusMap.get(user.id) || {
         hasPendingRequest: false,
         isFriend: false,
@@ -162,7 +217,8 @@ export class UserService {
       };
 
       return {
-        ...user,
+        id: user.id,
+        username: user.username,
         ...status,
       };
     });

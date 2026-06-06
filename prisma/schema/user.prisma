@@ -1,0 +1,59 @@
+enum FriendStatus {
+  PENDING // Запрос отправлен, ждёт подтверждения
+  ACCEPTED // Друзья
+  BLOCKED // В чёрном списке (опционально)
+}
+
+// 👇 Добавляем после модели User
+model Friend {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  senderId   Int
+  receiverId Int
+  status     FriendStatus @default(PENDING)
+
+  sender   User @relation("friendSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver User @relation("friendReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  // Уникальная пара пользователей (в любом направлении)
+  @@unique([senderId, receiverId])
+  @@index([status])
+  @@map("friends")
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  username  String   @unique
+  password  String? // 👈 Сделали опциональным для OAuth пользователей
+  name      String? // 👈 Сделали опциональным на случай пустых данных из соцсети
+  surname   String? // 👈 Сделали опциональным
+  createdAt DateTime @default(now())
+
+  // Твои связи (остались без изменений)
+  conversationMemberships ConversationMember[]
+  ownedConversations      Conversation[]
+  sentMessages            Message[]            @relation("SentMessages")
+  friendsSent             Friend[]             @relation("friendSender")
+  friendsReceived         Friend[]             @relation("friendReceiver")
+
+  // 🔹 Новая связь для масштабирования соцсетей
+  socialAccounts SocialAccount[]
+
+  @@map("users")
+}
+
+model SocialAccount {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  provider   String // Сюда будет сохраняться "YANDEX"
+  providerId String // ID пользователя в самом Яндексе
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerId])
+  @@map("social_accounts")
+}

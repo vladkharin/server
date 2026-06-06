@@ -255,7 +255,7 @@ export class MessageService {
       messages = messages.reverse();
     }
 
-    // 🔹 4. Обновляем lastReadAt
+    // 🔹 4. Обновляем lastReadAtS
     if (userId && !beforeId && !afterId && !fromUnread) {
       await this.prisma.conversationMember.updateMany({
         where: { userId, conversationId },
