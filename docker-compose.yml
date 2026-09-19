@@ -11,6 +11,29 @@ services:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - messenger_net
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: messenger-api
+    restart: always
+    ports:
+      - "3001:3001"
+    environment:
+      DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/messenger_db?schema=public"
+      PORT: 3001
+      JWT_SECRET: super_secret_jwt_key_2026
+    depends_on:
+      - postgres
+    networks:
+      - messenger_net
 
 volumes:
   postgres_data:
+
+networks:
+  messenger_net:
+    driver: bridge

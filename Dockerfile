@@ -12,7 +12,7 @@ COPY package*.json ./
 RUN npm ci
 
 COPY . .
-RUN npx prisma generate --schema=./prisma && npx nest build
+RUN npm run prisma:build && npx prisma generate && npx nest build
 
 
 # Финальный образ — тоже Debian
