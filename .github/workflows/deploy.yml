@@ -9,7 +9,7 @@ on:
 
 jobs:
   deploy-to-server:
-    name: 🚀 Deploy to VPS (Docker)
+    name: 🚀 Deploy Backend to VPS (PM2)
     runs-on: ubuntu-latest
 
     steps:
@@ -27,10 +27,8 @@ jobs:
             cd ~/projects/messenger-backend || exit 1
             git fetch --all
             git reset --hard origin/master
-            echo "🐳 Building and starting Docker containers..."
-            docker compose up -d --build
-            echo "🗄️ Syncing Prisma Schema..."
-            docker compose exec -T api npm run prisma:push
-            echo "🧹 Cleaning unused images..."
-            docker image prune -f
+            npm install
+            npm run prisma:push
+            npm run build
+            pm2 restart messenger-server
             echo "✅ Messenger Backend deployed successfully!"
