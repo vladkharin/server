@@ -49,21 +49,33 @@ export class GroupGateway {
         data.participantIds,
       )) as unknown as FullGroup;
 
+      const chatItem = {
+        id: group.id,
+        type: group.type,
+        name: group.name,
+        updatedAt: group.updatedAt,
+        lastMessage: null,
+        interlocutor: null,
+        membersCount: group.members ? group.members.length : 0,
+      };
+
       if (group && group.members) {
         group.members.forEach((member) => {
-          // Используем void для игнорирования плавающих промисов в emit
           void this.server
-            .to(`user:${member.userId}`)
-            .emit(NOTIFICATIONS.groupChatNew, {
-              ...group,
-              interlocutor: null,
-            });
+            .in(`user:${member.userId}`)
+            .socketsJoin(`chat:${group.id}`);
+
+          if (member.userId !== userId) {
+            void this.server
+              .to(`user:${member.userId}`)
+              .emit(NOTIFICATIONS.groupChatNew, chatItem);
+          }
         });
       }
 
       await client.join(`chat:${group.id}`);
 
-      return { status: 'ok', conversationId: group.id };
+      return { status: 'ok', conversationId: group.id, chat: chatItem };
     } catch (e: unknown) {
       return {
         status: 'error',

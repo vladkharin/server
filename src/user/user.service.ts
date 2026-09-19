@@ -140,6 +140,8 @@ export class UserService {
 
       return {
         id: conv.id,
+        type: conv.type,
+        name: conv.name,
         updatedAt: conv.updatedAt,
         lastMessage: lastMessage
           ? {
@@ -147,7 +149,8 @@ export class UserService {
               createdAt: lastMessage.createdAt,
             }
           : null,
-        interlocutor: otherMember?.user || null,
+        interlocutor: conv.type === 'DIRECT' ? (otherMember?.user || null) : null,
+        membersCount: conv.members.length,
       };
     });
   }

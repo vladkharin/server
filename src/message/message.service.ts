@@ -139,8 +139,10 @@ export class MessageService {
     return {
       id: conv.id,
       type: conv.type,
+      name: conv.name,
       updatedAt: conv.updatedAt,
-      interlocutor: otherMember?.user || null,
+      interlocutor: conv.type === 'DIRECT' ? (otherMember?.user || null) : null,
+      membersCount: conv.members.length,
       lastMessage: null, // Можно заполнить при желании
     };
   }

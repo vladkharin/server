@@ -17,10 +17,11 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "commit": "cz",
-    "prisma:build": "prisma-import -s 'prisma/**/*.prisma' -o prisma/schema.prisma",
+    "prisma:build": "npx prisma-import -s \"prisma/**/*.prisma\" -o prisma/schema.prisma --force",
     "prisma:generate": "npm run prisma:build && prisma generate",
     "prisma:migrate": "npm run prisma:build && prisma migrate dev",
-    "build": "npm run prisma:build && npx prisma generate && nest build",
+    "prisma:push": "npm run prisma:build && prisma db push",
+    "build": "npm run prisma:build && npx prisma generate && npx nest build",
     "start:prod": "npm run prisma:build && npx prisma migrate deploy && node dist/main"
   },
   "dependencies": {
