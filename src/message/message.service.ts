@@ -2,6 +2,7 @@
 
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { PushService } from '../push/push.service';
 import { Message } from '@prisma/client';
 import { Server } from 'socket.io';
 import { NOTIFICATIONS } from 'src/commands/commands';
@@ -24,7 +25,10 @@ export interface GetMessagesDto {
 
 @Injectable()
 export class MessageService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly pushService: PushService,
+  ) {}
 
   // 🔹 МЕТОД 1: Отправка сообщения
 
@@ -91,7 +95,40 @@ export class MessageService {
       data: { updatedAt: new Date() },
     });
 
-    // 5. Собираем данные для фронтенда
+    // 5. Отправка Push-уведомлений участникам чата
+    try {
+      const otherMembers = await this.prisma.conversationMember.findMany({
+        where: {
+          conversationId,
+          userId: { not: userId },
+        },
+        select: { userId: true },
+      });
+
+      const recipientIds = otherMembers.map((m) => m.userId);
+      if (recipientIds.length > 0) {
+        const senderName = message.sender?.username || 'Пользователь';
+        const preview =
+          dto.content.length > 80
+            ? dto.content.slice(0, 80) + '...'
+            : dto.content;
+
+        this.pushService
+          .sendPushToUsers(recipientIds, {
+            title: `@${senderName}`,
+            body: preview,
+            data: {
+              conversationId: String(conversationId),
+              url: `/main?chatId=${conversationId}`,
+            },
+          })
+          .catch(() => {});
+      }
+    } catch (pushErr) {
+      // Игнорируем ошибки push, чтобы не ломать отправку сообщений
+    }
+
+    // 6. Собираем данные для фронтенда
     const chatData = await this.getChatWithInterlocutor(conversationId, userId);
 
     // Если чат новый, уведомляем ПОЛУЧАТЕЛЯ
