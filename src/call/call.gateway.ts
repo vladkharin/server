@@ -205,6 +205,28 @@ export class CallGateway {
     }
   }
 
+  @SubscribeMessage('mediasoup:getProducers')
+  handleGetProducers(
+    @MessageBody() data: { conversationId: number; id: string },
+    @ConnectedSocket() client: Socket & { user?: { id: number } },
+  ) {
+    const userId = client.user?.id;
+    if (!userId) return { error: 'Unauthorized', id: data.id };
+
+    try {
+      const producers = this.callService.getProducers(
+        userId,
+        data.conversationId,
+      );
+      return { response: producers, id: data.id };
+    } catch (e: unknown) {
+      return {
+        error: e instanceof Error ? e.message : 'Unknown error',
+        id: data.id,
+      };
+    }
+  }
+
   // --- 5. ЗАВЕРШЕНИЕ ---
 
   @SubscribeMessage(REQUESTS.leaveRoom)

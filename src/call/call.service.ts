@@ -476,6 +476,32 @@ export class CallService {
       throw error;
     }
   }
+
+  getProducers(userId: number, conversationId: number) {
+    const room = this.rooms.get(Number(conversationId));
+    if (!room) return [];
+
+    const result: Array<{
+      producerId: string;
+      userId: number;
+      kind: mediasoup.types.MediaKind;
+      conversationId: number;
+    }> = [];
+
+    for (const [peerId, peer] of room.peers.entries()) {
+      if (peerId !== userId) {
+        for (const producer of peer.producers.values()) {
+          result.push({
+            producerId: producer.id,
+            userId: peerId,
+            kind: producer.kind,
+            conversationId: Number(conversationId),
+          });
+        }
+      }
+    }
+    return result;
+  }
   // --- Выход и завершение ---
 
   async handleLeaveRoom(
