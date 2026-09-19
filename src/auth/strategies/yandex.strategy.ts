@@ -12,9 +12,14 @@ export class YandexStrategy extends PassportStrategy(Strategy, 'yandex') {
   ) {
     super({
       // 2. Используем внедренный configService (не статический вызов)
-      clientID: configService.get<string>('YANDEX_CLIENT_ID') ?? '',
-      clientSecret: configService.get<string>('YANDEX_CLIENT_SECRET') ?? '',
-      callbackURL: configService.get<string>('YANDEX_CALLBACK_URL') ?? '',
+      clientID:
+        configService.get<string>('YANDEX_CLIENT_ID') || 'dummy_client_id',
+      clientSecret:
+        configService.get<string>('YANDEX_CLIENT_SECRET') ||
+        'dummy_client_secret',
+      callbackURL:
+        configService.get<string>('YANDEX_CALLBACK_URL') ||
+        'https://api.crafthive.ru/api/auth/yandex/callback',
     });
   }
 
