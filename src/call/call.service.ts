@@ -35,6 +35,9 @@ export class CallService {
   // --- Вспомогательные методы ---
 
   async getOrCreateRoom(conversationId: number): Promise<CallRoom> {
+    if (!conversationId || conversationId > 2147483647) {
+      throw new Error('Некорректный ID комнаты или диалог еще не создан');
+    }
     let room = this.rooms.get(conversationId);
     if (!room) {
       this.logger.log(`🛠 Создание новой комнаты: ${conversationId}`);
@@ -67,6 +70,10 @@ export class CallService {
   ) {
     const callerId = client.user?.id as number;
     const { conversationId } = payload;
+
+    if (!conversationId || conversationId > 2147483647) {
+      return { success: false, message: 'Неверный ID чата или чат еще не создан' };
+    }
 
     const members = await this.prisma.conversationMember.findMany({
       where: { conversationId, userId: { not: callerId } },
