@@ -19,20 +19,37 @@ export class PushService implements OnModuleInit {
       const serviceAccount = this.configService.get<string>(
         'FIREBASE_SERVICE_ACCOUNT',
       );
-      const projectId = this.configService.get<string>('FIREBASE_PROJECT_ID');
+      const projectId =
+        this.configService.get<string>('FIREBASE_PROJECT_ID') ||
+        'crafthive-1e22f';
+
+      const fs = require('fs');
+      const path = require('path');
+      const defaultJsonPath = path.resolve(
+        process.cwd(),
+        'firebase-adminsdk.json',
+      );
 
       if (serviceAccount) {
         let certObj: ServiceAccount;
         try {
           certObj = JSON.parse(serviceAccount);
         } catch {
-          certObj = require(serviceAccount);
+          certObj = require(path.resolve(process.cwd(), serviceAccount));
         }
 
         this.firebaseApp = initializeApp({
           credential: cert(certObj),
         });
         this.logger.log('🔥 Firebase Admin SDK успешно инициализирован');
+      } else if (fs.existsSync(defaultJsonPath)) {
+        const certObj = require(defaultJsonPath);
+        this.firebaseApp = initializeApp({
+          credential: cert(certObj),
+        });
+        this.logger.log(
+          '🔥 Firebase Admin SDK успешно инициализирован из firebase-adminsdk.json',
+        );
       } else if (projectId) {
         this.firebaseApp = initializeApp({
           projectId,
