@@ -34,6 +34,68 @@ export class UserService {
     });
   }
 
+  async getProfile(userId: number) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        name: true,
+        surname: true,
+        createdAt: true,
+      },
+    });
+    if (!user) {
+      throw new Error('Пользователь не найден');
+    }
+    return user;
+  }
+
+  async updateProfile(userId: number, dto: { username?: string; email?: string; name?: string; surname?: string }) {
+    if (dto.username) {
+      const existingUser = await this.prisma.user.findFirst({
+        where: {
+          username: dto.username,
+          NOT: { id: userId },
+        },
+      });
+      if (existingUser) {
+        throw new Error('Данный никнейм уже занят');
+      }
+    }
+
+    if (dto.email) {
+      const existingEmail = await this.prisma.user.findFirst({
+        where: {
+          email: dto.email,
+          NOT: { id: userId },
+        },
+      });
+      if (existingEmail) {
+        throw new Error('Данный Email уже зарегистрирован');
+      }
+    }
+
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...(dto.username && { username: dto.username.trim() }),
+        ...(dto.email && { email: dto.email.trim() }),
+        ...(dto.name !== undefined && { name: dto.name?.trim() || null }),
+        ...(dto.surname !== undefined && { surname: dto.surname?.trim() || null }),
+      },
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        name: true,
+        surname: true,
+        createdAt: true,
+      },
+    });
+  }
+
   // --- НОВЫЕ МЕТОДЫ ДЛЯ СОЦСЕТЕЙ (OAuth) ---
 
   /**

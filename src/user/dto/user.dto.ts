@@ -33,3 +33,20 @@ export class FindUserDto {
   @IsString()
   name!: string;
 }
+
+export class UpdateProfileDto {
+  @IsString()
+  @IsNotEmpty()
+  username?: string;
+
+  @IsEmail()
+  @IsNotEmpty()
+  email?: string;
+
+  @IsString()
+  name?: string;
+
+  @IsString()
+  surname?: string;
+}
+
