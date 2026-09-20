@@ -1,4 +1,4 @@
-import { IsEmail, IsNotEmpty, IsString } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsOptional, IsString, Length, Matches } from 'class-validator';
 
 export interface CreateUserInput {
   email: string;
@@ -22,6 +22,10 @@ export class CreateUserDto implements CreateUserDto {
   surname!: string;
 
   @IsString()
+  @Length(3, 32, { message: 'Никнейм должен содержать от 3 до 32 символов' })
+  @Matches(/^[a-zA-Z0-9_.-]+$/, {
+    message: 'Никнейм может содержать только латинские буквы (a-z), цифры и символы _ . -',
+  })
   username!: string;
 }
 
@@ -35,17 +39,23 @@ export class FindUserDto {
 }
 
 export class UpdateProfileDto {
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
+  @Length(3, 32, { message: 'Никнейм должен содержать от 3 до 32 символов' })
+  @Matches(/^[a-zA-Z0-9_.-]+$/, {
+    message: 'Никнейм может содержать только латинские буквы (a-z), цифры и символы _ . -',
+  })
   username?: string;
 
+  @IsOptional()
   @IsEmail()
-  @IsNotEmpty()
   email?: string;
 
+  @IsOptional()
   @IsString()
   name?: string;
 
+  @IsOptional()
   @IsString()
   surname?: string;
 }

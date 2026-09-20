@@ -1,9 +1,13 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { PresenceService } from '../websocket/presence.service';
 
 @Injectable()
 export class ServerCommunityService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly presenceService: PresenceService,
+  ) {}
 
   async createServer(userId: number, name: string, icon?: string) {
     if (!name || name.trim().length === 0) {
@@ -389,6 +393,7 @@ export class ServerCommunityService {
       customStatus: m.user.customStatus,
       statusEmoji: m.user.statusEmoji,
       lastSeenAt: m.user.lastSeenAt,
+      isOnline: this.presenceService.isOnline(m.user.id),
       role: m.role,
       joinedAt: m.joinedAt,
     }));

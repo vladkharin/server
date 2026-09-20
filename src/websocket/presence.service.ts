@@ -17,6 +17,14 @@ export class PresenceService {
     return this.userSockets.get(userId);
   }
 
+  isOnline(userId: number): boolean {
+    return this.userSockets.has(userId);
+  }
+
+  getOnlineUserIds(): number[] {
+    return Array.from(this.userSockets.keys());
+  }
+
   getAll(): Map<number, string> {
     return this.userSockets;
   }

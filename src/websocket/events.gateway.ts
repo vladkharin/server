@@ -18,7 +18,7 @@ import { UserService } from 'src/user/user.service';
 import { FindUserDto } from 'src/user/dto/user.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { PresenceService } from './presence.service';
-import { REQUESTS } from 'src/commands/commands';
+import { NOTIFICATIONS, REQUESTS } from 'src/commands/commands';
 
 //node -e "console.log(require('ulid').ulid())"
 
@@ -53,12 +53,18 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         console.log(
           `- Переподключение юзера ${user.id}, старый сокет: ${existingSocketId}`,
         );
-        // Опционально: можно принудительно закрыть старый сокет
-        // this.server.sockets.sockets.get(existingSocketId)?.disconnect();
       }
 
       // Обновляем Presence сразу
       this.presenceService.set(user.id, client.id);
+
+      // Обновляем lastSeenAt в БД
+      await this.prisma.user
+        .update({
+          where: { id: user.id },
+          data: { lastSeenAt: new Date() },
+        })
+        .catch(() => {});
 
       // Вход в комнаты
       await client.join(`user:${user.id}`);
@@ -91,8 +97,18 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         }
       }
 
+      // Оповещаем всех клиентов об онлайн-статусе
+      this.server.emit(NOTIFICATIONS.userStatus, {
+        userId: user.id,
+        isOnline: true,
+        lastSeenAt: new Date(),
+      });
+
       console.log(`✅ User ${user.id} connected (Socket: ${client.id})`);
       client.emit('auth:ready');
+
+      // Отправляем подключившемуся список ID всех онлайн пользователей
+      client.emit('presence:online_users', this.presenceService.getOnlineUserIds());
     } catch (_e) {
       client.disconnect(true);
     }
@@ -101,9 +117,21 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   handleDisconnect(client: Socket) {
     const userId = client.user?.id as number;
     if (userId) {
-      // this.userSockets.delete(userId);
       if (this.presenceService.getSocketId(userId) === client.id) {
         this.presenceService.remove(userId);
+        const now = new Date();
+        this.prisma.user
+          .update({
+            where: { id: userId },
+            data: { lastSeenAt: now },
+          })
+          .catch(() => {});
+
+        this.server.emit(NOTIFICATIONS.userStatus, {
+          userId,
+          isOnline: false,
+          lastSeenAt: now,
+        });
         console.log(`📴 Пользователь ${userId} окончательно отключён`);
       } else {
         console.log(`ℹ️ Проигнорирован старый дисконнект для ${userId}`);
@@ -152,9 +180,21 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     try {
       const chats = await this.userService.getUserChats(userId);
-      console.log(`📨 Отправляю ${chats.length} чатов`);
+      const enhancedChats = chats.map((c) => {
+        if (c.interlocutor) {
+          return {
+            ...c,
+            interlocutor: {
+              ...c.interlocutor,
+              isOnline: this.presenceService.isOnline(c.interlocutor.id),
+            },
+          };
+        }
+        return c;
+      });
+      console.log(`📨 Отправляю ${enhancedChats.length} чатов`);
       // Отправляем ответ через ТО ЖЕ событие: 'dm:list'
-      return { response: chats, id: data.id };
+      return { response: enhancedChats, id: data.id };
     } catch (error) {
       console.error('🔥 Ошибка:', error);
       return { error: 'Failed to load chats', id: data.id };

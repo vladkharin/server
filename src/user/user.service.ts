@@ -30,6 +30,14 @@ export class UserService {
     const trimmedUsername = dto.username.trim();
     const trimmedEmail = dto.email.trim().toLowerCase();
 
+    const usernameRegex = /^[a-zA-Z0-9_.-]+$/;
+    if (!usernameRegex.test(trimmedUsername)) {
+      throw new BadRequestException('Никнейм может содержать только латинские буквы (a-z), цифры и символы _ . -');
+    }
+    if (trimmedUsername.length < 3 || trimmedUsername.length > 32) {
+      throw new BadRequestException('Никнейм должен содержать от 3 до 32 символов');
+    }
+
     const existingUsername = await this.prisma.user.findFirst({
       where: { username: { equals: trimmedUsername, mode: 'insensitive' } },
     });
@@ -283,26 +291,35 @@ export class UserService {
 
   async updateProfile(userId: number, dto: { username?: string; email?: string; name?: string; surname?: string }) {
     if (dto.username) {
+      const trimmedUsername = dto.username.trim();
+      const usernameRegex = /^[a-zA-Z0-9_.-]+$/;
+      if (!usernameRegex.test(trimmedUsername)) {
+        throw new BadRequestException('Никнейм может содержать только латинские буквы (a-z), цифры и символы _ . -');
+      }
+      if (trimmedUsername.length < 3 || trimmedUsername.length > 32) {
+        throw new BadRequestException('Никнейм должен содержать от 3 до 32 символов');
+      }
       const existingUser = await this.prisma.user.findFirst({
         where: {
-          username: dto.username,
+          username: { equals: trimmedUsername, mode: 'insensitive' },
           NOT: { id: userId },
         },
       });
       if (existingUser) {
-        throw new Error('Данный никнейм уже занят');
+        throw new ConflictException('Данный никнейм уже занят');
       }
     }
 
     if (dto.email) {
+      const trimmedEmail = dto.email.trim().toLowerCase();
       const existingEmail = await this.prisma.user.findFirst({
         where: {
-          email: dto.email,
+          email: { equals: trimmedEmail, mode: 'insensitive' },
           NOT: { id: userId },
         },
       });
       if (existingEmail) {
-        throw new Error('Данный Email уже зарегистрирован');
+        throw new ConflictException('Данный Email уже зарегистрирован');
       }
     }
 
@@ -406,6 +423,10 @@ export class UserService {
       name: true,
       surname: true,
       username: true,
+      avatar: true,
+      customStatus: true,
+      statusEmoji: true,
+      lastSeenAt: true,
     } as const;
 
     const conversations = await this.prisma.conversation.findMany({
