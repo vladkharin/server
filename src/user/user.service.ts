@@ -182,6 +182,7 @@ export class UserService {
     const conversations = await this.prisma.conversation.findMany({
       where: {
         members: { some: { userId } },
+        serverId: null,
       },
       include: {
         members: {
@@ -197,7 +198,9 @@ export class UserService {
     });
 
     return conversations.map((conv) => {
-      const otherMember = conv.members.find((m) => m.userId !== userId);
+      const otherMember = conv.members.find(
+        (m) => m.userId !== userId && m.user?.username !== 'CraftAI',
+      );
       const lastMessage = conv.messages[0] || null;
 
       return {
@@ -212,7 +215,7 @@ export class UserService {
             }
           : null,
         interlocutor: conv.type === 'DIRECT' ? (otherMember?.user || null) : null,
-        membersCount: conv.members.length,
+        membersCount: conv.members.filter((m) => m.user?.username !== 'CraftAI').length,
       };
     });
   }

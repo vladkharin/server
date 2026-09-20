@@ -1,6 +1,4 @@
-// src/message/message.service.ts
-
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PushService } from '../push/push.service';
 import { Server } from 'socket.io';
@@ -40,11 +38,29 @@ export interface GetMessagesDto {
 }
 
 @Injectable()
-export class MessageService {
+export class MessageService implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly pushService: PushService,
   ) {}
+
+  async onModuleInit() {
+    try {
+      const aiUser = await this.prisma.user.findUnique({
+        where: { username: 'CraftAI' },
+      });
+      if (aiUser) {
+        const deleted = await this.prisma.conversationMember.deleteMany({
+          where: { userId: aiUser.id },
+        });
+        if (deleted.count > 0) {
+          console.log(`🧹 Очищено ${deleted.count} записей членства бота CraftAI в чатах`);
+        }
+      }
+    } catch (e) {
+      console.error('Ошибка очистки членов бота CraftAI:', e);
+    }
+  }
 
   // 🔹 МЕТОД 1: Отправка сообщения
   async sendMessage(userId: number, dto: SendMessageDto, server: Server) {
@@ -296,18 +312,6 @@ export class MessageService {
       });
     }
 
-    const aiMember = await this.prisma.conversationMember.findUnique({
-      where: {
-        userId_conversationId: { userId: aiUser.id, conversationId },
-      },
-    });
-
-    if (!aiMember) {
-      await this.prisma.conversationMember.create({
-        data: { userId: aiUser.id, conversationId },
-      });
-    }
-
     const message = await this.prisma.message.create({
       data: {
         content: botContent,
@@ -347,7 +351,9 @@ export class MessageService {
 
     if (!conv) return null;
 
-    const otherMember = conv.members.find((m) => m.userId !== currentUserId);
+    const otherMember = conv.members.find(
+      (m) => m.userId !== currentUserId && m.user?.username !== 'CraftAI',
+    );
 
     return {
       id: conv.id,
@@ -364,7 +370,7 @@ export class MessageService {
           }
         : null,
       interlocutor: conv.type === 'DIRECT' ? (otherMember?.user || null) : null,
-      membersCount: conv.members.length,
+      membersCount: conv.members.filter((m) => m.user?.username !== 'CraftAI').length,
       lastMessage: null,
     };
   }
