@@ -30,7 +30,7 @@ jobs:
           npm run build
           tar -czf backend-build.tar.gz dist prisma package.json package-lock.json
 
-      - name: 🚚 Transfer & Deploy via Native SSH
+      - name: 🚚 Stream & Deploy to VPS over SSH
         env:
           SSHPASS: ${{ secrets.SERVER_PASSWORD }}
           HOST: ${{ secrets.SERVER_HOST }}
@@ -39,17 +39,11 @@ jobs:
         run: |
           sudo apt-get update -y && sudo apt-get install -y sshpass
 
-          # 1. Создаем папку на сервере если нет
-          sshpass -e ssh -o StrictHostKeyChecking=no -p $PORT $USER@$HOST "mkdir -p ~/projects/messenger-backend"
-
-          # 2. Быстро передаем компактный архив
-          sshpass -e scp -o StrictHostKeyChecking=no -P $PORT backend-build.tar.gz $USER@$HOST:~/projects/messenger-backend/
-
-          # 3. Распаковываем, накатываем БД и перезапускаем PM2
-          sshpass -e ssh -o StrictHostKeyChecking=no -p $PORT $USER@$HOST "
+          # Прямая передача через SSH pipe в tar
+          cat backend-build.tar.gz | sshpass -e ssh -o StrictHostKeyChecking=no -p $PORT $USER@$HOST "
+            mkdir -p ~/projects/messenger-backend &&
             cd ~/projects/messenger-backend &&
-            tar -xzf backend-build.tar.gz &&
-            rm -f backend-build.tar.gz &&
+            tar -xzf - &&
             npm install --production --prefer-offline || true &&
             npx prisma generate || true &&
             npx prisma db push --skip-generate || true &&
