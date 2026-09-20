@@ -10,6 +10,55 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { NOTIFICATIONS, REQUESTS } from 'src/commands/commands';
 import * as crypto from 'crypto';
 
+function generateBase32Secret(length = 20): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  const randomBytes = crypto.randomBytes(length);
+  let secret = '';
+  for (let i = 0; i < length; i++) {
+    secret += chars[randomBytes[i] % 32];
+  }
+  return secret;
+}
+
+function verifyTOTP(secret: string, code: string, window = 1): boolean {
+  if (!secret || !code) return false;
+  const base32chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  let bits = '';
+  for (let i = 0; i < secret.length; i++) {
+    const val = base32chars.indexOf(secret.charAt(i).toUpperCase());
+    if (val === -1) continue;
+    bits += val.toString(2).padStart(5, '0');
+  }
+  const keyBytes: number[] = [];
+  for (let i = 0; i + 8 <= bits.length; i += 8) {
+    keyBytes.push(parseInt(bits.substring(i, i + 8), 2));
+  }
+  const key = Buffer.from(keyBytes);
+
+  const epoch = Math.floor(Date.now() / 1000);
+  const currentStep = Math.floor(epoch / 30);
+
+  for (let errorWindow = -window; errorWindow <= window; errorWindow++) {
+    const step = currentStep + errorWindow;
+    const buf = Buffer.alloc(8);
+    buf.writeBigInt64BE(BigInt(step));
+
+    const hmac = crypto.createHmac('sha1', key).update(buf).digest();
+    const offset = hmac[hmac.length - 1] & 0xf;
+    const binary =
+      ((hmac[offset] & 0x7f) << 24) |
+      ((hmac[offset + 1] & 0xff) << 16) |
+      ((hmac[offset + 2] & 0xff) << 8) |
+      (hmac[offset + 3] & 0xff);
+
+    const otp = (binary % 1000000).toString().padStart(6, '0');
+    if (otp === code.trim()) {
+      return true;
+    }
+  }
+  return false;
+}
+
 @WebSocketGateway()
 export class UserSettingsGateway {
   @WebSocketServer()
@@ -91,7 +140,7 @@ export class UserSettingsGateway {
   ) {
     const userId = client.user.id;
     try {
-      const secret = crypto.randomBytes(20).toString('hex').slice(0, 32);
+      const secret = generateBase32Secret(20);
       const user = await this.prisma.user.findUnique({ where: { id: userId } });
 
       await this.prisma.user.update({
@@ -99,7 +148,9 @@ export class UserSettingsGateway {
         data: { twoFactorSecret: secret },
       });
 
-      const otpauthUrl = `otpauth://totp/CraftHive:${user?.username}?secret=${secret}&issuer=CraftHive`;
+      const label = encodeURIComponent(`CraftHive (${user?.username || 'user'})`);
+      const issuer = encodeURIComponent('CraftHive');
+      const otpauthUrl = `otpauth://totp/${label}?secret=${secret}&issuer=${issuer}`;
 
       return {
         status: 'ok',
@@ -124,8 +175,24 @@ export class UserSettingsGateway {
   ) {
     const userId = client.user.id;
     try {
+      const user = await this.prisma.user.findUnique({ where: { id: userId } });
+      if (!user || !user.twoFactorSecret) {
+        return {
+          error: '2FA не была инициирована. Сначала сгенерируйте секретный ключ.',
+          id: data.id,
+        };
+      }
+
+      const isValid = verifyTOTP(user.twoFactorSecret, data.code);
+      if (!isValid) {
+        return {
+          error: 'Неверный 6-значный код 2FA. Проверьте время на устройстве и попробуйте снова.',
+          id: data.id,
+        };
+      }
+
       // Подтверждаем и активируем 2FA
-      const user = await this.prisma.user.update({
+      const updatedUser = await this.prisma.user.update({
         where: { id: userId },
         data: { twoFactorEnabled: true },
         select: { id: true, twoFactorEnabled: true },
@@ -135,7 +202,7 @@ export class UserSettingsGateway {
         status: 'ok',
         response: {
           success: true,
-          twoFactorEnabled: user.twoFactorEnabled,
+          twoFactorEnabled: updatedUser.twoFactorEnabled,
         },
         id: data.id,
       };
