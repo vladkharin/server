@@ -225,4 +225,102 @@ export class ServerCommunityGateway {
       };
     }
   }
+
+  @SubscribeMessage(REQUESTS.channelUpdate)
+  async handleChannelUpdate(
+    @MessageBody()
+    data: {
+      channelId: number;
+      name?: string;
+      type?: 'SERVER_CHANNEL' | 'SERVER_VOICE';
+      id?: string;
+    },
+    @ConnectedSocket() client: Socket & { user: { id: number } },
+  ) {
+    const userId = client.user.id;
+    try {
+      const channel = await this.serverCommunityService.updateChannel(
+        userId,
+        data.channelId,
+        { name: data.name, type: data.type },
+      );
+
+      if (channel.serverId) {
+        this.server
+          .to(`server:${channel.serverId}`)
+          .emit(NOTIFICATIONS.channelUpdated, {
+            serverId: channel.serverId,
+            channel,
+          });
+      }
+
+      return {
+        status: 'ok',
+        response: channel,
+        id: data.id,
+      };
+    } catch (error: any) {
+      return {
+        error: error?.message || 'Error updating channel',
+        id: data.id,
+      };
+    }
+  }
+
+  @SubscribeMessage(REQUESTS.channelDelete)
+  async handleChannelDelete(
+    @MessageBody() data: { channelId: number; id?: string },
+    @ConnectedSocket() client: Socket & { user: { id: number } },
+  ) {
+    const userId = client.user.id;
+    try {
+      const result = await this.serverCommunityService.deleteChannel(
+        userId,
+        data.channelId,
+      );
+
+      this.server
+        .to(`server:${result.serverId}`)
+        .emit(NOTIFICATIONS.channelDeleted, {
+          serverId: result.serverId,
+          channelId: result.channelId,
+        });
+
+      return {
+        status: 'ok',
+        response: result,
+        id: data.id,
+      };
+    } catch (error: any) {
+      return {
+        error: error?.message || 'Error deleting channel',
+        id: data.id,
+      };
+    }
+  }
+
+  @SubscribeMessage(REQUESTS.serverMembers)
+  async handleServerMembers(
+    @MessageBody() data: { serverId: number; id?: string },
+    @ConnectedSocket() client: Socket & { user: { id: number } },
+  ) {
+    const userId = client.user.id;
+    try {
+      const members = await this.serverCommunityService.getServerMembers(
+        data.serverId,
+        userId,
+      );
+
+      return {
+        status: 'ok',
+        response: members,
+        id: data.id,
+      };
+    } catch (error: any) {
+      return {
+        error: error?.message || 'Error fetching server members',
+        id: data.id,
+      };
+    }
+  }
 }

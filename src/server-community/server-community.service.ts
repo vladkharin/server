@@ -283,4 +283,114 @@ export class ServerCommunityService {
 
     return { success: true, serverId };
   }
+
+  async updateChannel(
+    userId: number,
+    channelId: number,
+    data: { name?: string; type?: 'SERVER_CHANNEL' | 'SERVER_VOICE' },
+  ) {
+    const channel = await this.prisma.conversation.findUnique({
+      where: { id: channelId },
+    });
+
+    if (!channel || !channel.serverId) {
+      throw new NotFoundException('Канал не найден');
+    }
+
+    const member = await this.prisma.serverMember.findUnique({
+      where: { userId_serverId: { userId, serverId: channel.serverId } },
+    });
+
+    if (!member || (member.role !== 'OWNER' && member.role !== 'ADMIN')) {
+      throw new BadRequestException('У вас нет прав для редактирования каналов');
+    }
+
+    const updated = await this.prisma.conversation.update({
+      where: { id: channelId },
+      data: {
+        ...(data.name && { name: data.name.trim() }),
+        ...(data.type && { type: data.type }),
+      },
+    });
+
+    return updated;
+  }
+
+  async deleteChannel(userId: number, channelId: number) {
+    const channel = await this.prisma.conversation.findUnique({
+      where: { id: channelId },
+    });
+
+    if (!channel || !channel.serverId) {
+      throw new NotFoundException('Канал не найден');
+    }
+
+    const serverId = channel.serverId;
+
+    const member = await this.prisma.serverMember.findUnique({
+      where: { userId_serverId: { userId, serverId } },
+    });
+
+    if (!member || (member.role !== 'OWNER' && member.role !== 'ADMIN')) {
+      throw new BadRequestException('У вас нет прав для удаления каналов');
+    }
+
+    // Проверяем, что это не единственный канал
+    const channelsCount = await this.prisma.conversation.count({
+      where: { serverId },
+    });
+
+    if (channelsCount <= 1) {
+      throw new BadRequestException('Нельзя удалить последний канал сервера');
+    }
+
+    await this.prisma.conversation.delete({
+      where: { id: channelId },
+    });
+
+    return { success: true, channelId, serverId };
+  }
+
+  async getServerMembers(serverId: number, userId: number) {
+    const member = await this.prisma.serverMember.findUnique({
+      where: { userId_serverId: { userId, serverId } },
+    });
+
+    if (!member) {
+      throw new BadRequestException('Вы не состоите на этом сервере');
+    }
+
+    const members = await this.prisma.serverMember.findMany({
+      where: { serverId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            username: true,
+            name: true,
+            surname: true,
+            avatar: true,
+            customStatus: true,
+            statusEmoji: true,
+            lastSeenAt: true,
+          },
+        },
+      },
+      orderBy: { joinedAt: 'asc' },
+    });
+
+    return members.map((m) => ({
+      id: m.user.id,
+      userId: m.userId,
+      username: m.user.username,
+      name: m.user.name,
+      surname: m.user.surname,
+      avatar: m.user.avatar,
+      customStatus: m.user.customStatus,
+      statusEmoji: m.user.statusEmoji,
+      lastSeenAt: m.user.lastSeenAt,
+      role: m.role,
+      joinedAt: m.joinedAt,
+    }));
+  }
 }
