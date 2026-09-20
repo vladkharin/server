@@ -4,6 +4,7 @@ import {
   Get,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -14,6 +15,11 @@ import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 @Controller('user')
 export class UserController {
   constructor(private readonly userService: UserService) {}
+
+  @Get('/test-smtp')
+  async testSmtp(@Query('email') email?: string) {
+    return this.userService.testSmtp(email);
+  }
 
   @Post('/registration')
   async createUser(@Body() dto: CreateUserDto) {

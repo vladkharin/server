@@ -22,13 +22,15 @@ export class EmailService {
     if (user && pass) {
       if (host === 'smtp.gmail.com' || (!host && user.endsWith('@gmail.com'))) {
         this.transporter = nodemailer.createTransport({
-          service: 'gmail',
+          host: 'smtp.gmail.com',
+          port: 465,
+          secure: true,
           auth: { user, pass },
           tls: {
             rejectUnauthorized: false,
           },
         });
-        this.logger.log(`📧 Gmail SMTP Transporter инициализирован для ${user}`);
+        this.logger.log(`📧 Gmail SMTP (SSL 465) Transporter инициализирован для ${user}`);
       } else if (host) {
         this.transporter = nodemailer.createTransport({
           host,
@@ -39,11 +41,21 @@ export class EmailService {
             rejectUnauthorized: false,
           },
         });
-        this.logger.log(`📧 SMTP Transporter инициализирован (${host}:${port}, secure=${secure})`);
+        this.logger.log(`📧 SMTP Transporter инициализирован (${host}:${port}, secure=${secure}) для ${user}`);
+      }
+
+      if (this.transporter) {
+        this.transporter.verify((error) => {
+          if (error) {
+            this.logger.error(`❌ SMTP Verify Error (${user}): ${error.message}`);
+          } else {
+            this.logger.log(`✅ SMTP сервер успешно авторизован и готов к отправке писем!`);
+          }
+        });
       }
     } else {
       this.logger.warn(
-        '⚠️ SMTP параметры не заданы (SMTP_HOST, SMTP_USER, SMTP_PASS). Письма будут логироваться в консоль.',
+        '⚠️ SMTP параметры не заданы (SMTP_USER, SMTP_PASS в .env). Письма будут логироваться в консоль.',
       );
     }
   }
@@ -144,6 +156,49 @@ export class EmailService {
     return this.sendMail(to, subject, html);
   }
 
+  /**
+   * Диагностическая отправка тестового письма
+   */
+  async sendTestMail(to: string): Promise<{ success: boolean; message: string; details?: any }> {
+    if (!this.transporter) {
+      return {
+        success: false,
+        message: 'SMTP Transporter не инициализирован. Проверьте переменные SMTP_USER и SMTP_PASS в файле .env',
+      };
+    }
+
+    const subject = `[CraftHive] Тестовое письмо SMTP (${new Date().toLocaleTimeString()})`;
+    const html = `
+      <div style="font-family: sans-serif; padding: 20px; background: #181a20; color: #fff; border-radius: 10px;">
+        <h2 style="color: #f97316;">CraftHive SMTP Test ✅</h2>
+        <p>Если вы видите это письмо, значит SMTP шлюз через Gmail работает корректно!</p>
+        <p>Время отправки: <b>${new Date().toISOString()}</b></p>
+      </div>
+    `;
+
+    try {
+      const info = await this.transporter.sendMail({
+        from: this.fromAddress,
+        to,
+        subject,
+        html,
+      });
+      this.logger.log(`✅ Тестовое письмо успешно отправлено на ${to}: messageId=${info.messageId}`);
+      return {
+        success: true,
+        message: `Письмо успешно отправлено на ${to}`,
+        details: { messageId: info.messageId, response: info.response },
+      };
+    } catch (err: any) {
+      this.logger.error(`❌ Ошибка отправки тестового письма на ${to}:`, err);
+      return {
+        success: false,
+        message: `Ошибка отправки письма: ${err.message}`,
+        details: { code: err.code, response: err.response, command: err.command },
+      };
+    }
+  }
+
   private async sendMail(to: string, subject: string, html: string): Promise<boolean> {
     if (!this.transporter) {
       this.logger.log(
@@ -162,7 +217,7 @@ export class EmailService {
       this.logger.log(`✅ Письмо успешно отправлено на ${to}`);
       return true;
     } catch (err: any) {
-      this.logger.error(`❌ Ошибка отправки письма на ${to}:`, err);
+      this.logger.error(`❌ Ошибка отправки письма на ${to}: ${err.message}`, err.stack);
       return false;
     }
   }

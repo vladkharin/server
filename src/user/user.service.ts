@@ -240,6 +240,11 @@ export class UserService {
     };
   }
 
+  async testSmtp(email?: string) {
+    const targetEmail = email?.trim() || 'dom.craft.digital@gmail.com';
+    return this.emailService.sendTestMail(targetEmail);
+  }
+
   async findOne(username: string) {
     return await this.prisma.user.findFirst({
       where: { username: username },
