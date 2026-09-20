@@ -18,9 +18,32 @@ export const REQUESTS = {
   messageEdit: 'message:edit',
   messageDelete: 'message:delete',
   messageRead: 'message:read',
+  messageSearch: 'message:search',
+  messagePin: 'message:pin',
+  messageUnpin: 'message:unpin',
+
+  reactionToggle: 'reaction:toggle',
 
   typingStart: 'typing:start',
   typingStop: 'typing:stop',
+
+  serverCreate: 'server:create',
+  serverList: 'server:list',
+  serverGet: 'server:get',
+  serverJoin: 'server:join',
+  channelCreate: 'channel:create',
+
+  aiQuery: 'ai:query',
+  aiSummarize: 'ai:summarize',
+  aiTranslate: 'ai:translate',
+
+  userStatusUpdate: 'user:status:update',
+  userThemeUpdate: 'user:theme:update',
+  user2faGenerate: 'user:2fa:generate',
+  user2faVerify: 'user:2fa:verify',
+  user2faDisable: 'user:2fa:disable',
+  sessionList: 'session:list',
+  sessionTerminate: 'session:terminate',
 
   callRequest: 'call:request',
   callAccept: 'call:accept',
@@ -46,7 +69,13 @@ export const NOTIFICATIONS = {
   messageReceived: 'notification.message.received',
   messageUpdated: 'notification.message.updated',
   messageDeleted: 'notification.message.deleted',
+  messagePinned: 'notification.message.pinned',
+
+  reactionUpdated: 'notification.reaction.updated',
 
   userTyping: 'notification.user.typing',
   userStatus: 'notification.user.status',
+
+  serverNew: 'notification.server.new',
+  channelNew: 'notification.channel.new',
 } as const;

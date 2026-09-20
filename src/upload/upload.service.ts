@@ -25,12 +25,15 @@ export class UploadService {
     this.logger.log(`Cloudinary configured for cloud_name: ${cloudName}`);
   }
 
-  async uploadImage(
+  async uploadFile(
     file: Express.Multer.File,
     folder = 'crafthive',
   ): Promise<{
     url: string;
     publicId: string;
+    fileName: string;
+    fileSize: number;
+    fileType: string;
     width?: number;
     height?: number;
     format?: string;
@@ -39,30 +42,21 @@ export class UploadService {
       throw new BadRequestException('Файл не предоставлен');
     }
 
-    // Проверка типа файла
-    const allowedMimeTypes = [
-      'image/jpeg',
-      'image/png',
-      'image/gif',
-      'image/webp',
-      'image/svg+xml',
-    ];
-    if (!allowedMimeTypes.includes(file.mimetype)) {
-      throw new BadRequestException(
-        'Неподдерживаемый формат изображения. Разрешены: JPEG, PNG, GIF, WEBP, SVG',
-      );
+    // Ограничение размера: 50 МБ для любых файлов
+    if (file.size > 50 * 1024 * 1024) {
+      throw new BadRequestException('Размер файла не должен превышать 50 МБ');
     }
 
-    // Ограничение размера: 10 МБ
-    if (file.size > 10 * 1024 * 1024) {
-      throw new BadRequestException('Размер изображения не должен превышать 10 МБ');
-    }
+    let fileType = 'document';
+    if (file.mimetype.startsWith('image/')) fileType = 'image';
+    else if (file.mimetype.startsWith('audio/')) fileType = 'audio';
+    else if (file.mimetype.startsWith('video/')) fileType = 'video';
 
     return new Promise((resolve, reject) => {
       const uploadStream = cloudinary.uploader.upload_stream(
         {
           folder,
-          resource_type: 'image',
+          resource_type: 'auto',
         },
         (
           error: UploadApiErrorResponse | undefined,
@@ -80,6 +74,9 @@ export class UploadService {
           resolve({
             url: result.secure_url,
             publicId: result.public_id,
+            fileName: file.originalname || 'file',
+            fileSize: file.size,
+            fileType,
             width: result.width,
             height: result.height,
             format: result.format,
@@ -89,5 +86,12 @@ export class UploadService {
 
       uploadStream.end(file.buffer);
     });
+  }
+
+  async uploadImage(
+    file: Express.Multer.File,
+    folder = 'crafthive',
+  ) {
+    return this.uploadFile(file, folder);
   }
 }

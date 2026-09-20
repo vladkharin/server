@@ -16,10 +16,10 @@ import { Request } from 'express';
 export class UploadController {
   constructor(private readonly uploadService: UploadService) {}
 
-  @Post('image')
+  @Post('file')
   @UseGuards(JwtAuthGuard)
   @UseInterceptors(FileInterceptor('file'))
-  async uploadImage(
+  async uploadFile(
     @UploadedFile() file: Express.Multer.File,
     @Req() req: Request & { user?: { id: number } },
   ) {
@@ -28,15 +28,28 @@ export class UploadController {
     }
 
     const folder = `crafthive/user_${req.user?.id || 'general'}`;
-    const result = await this.uploadService.uploadImage(file, folder);
+    const result = await this.uploadService.uploadFile(file, folder);
 
     return {
       success: true,
       url: result.url,
       publicId: result.publicId,
+      fileName: result.fileName,
+      fileSize: result.fileSize,
+      fileType: result.fileType,
       width: result.width,
       height: result.height,
       format: result.format,
     };
+  }
+
+  @Post('image')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadImage(
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req: Request & { user?: { id: number } },
+  ) {
+    return this.uploadFile(file, req);
   }
 }

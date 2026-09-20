@@ -10,6 +10,14 @@ model Conversation {
     // Для DIRECT: хэш вида "minId-maxId" → гарантирует уникальность пары
     dmHash String? @unique
 
+    // Закрепленное сообщение
+    pinnedMessageId Int?     @unique
+    pinnedMessage   Message? @relation("ConversationPinnedMessage", fields: [pinnedMessageId], references: [id], onDelete: SetNull)
+
+    // Привязка к серверу (для SERVER_CHANNEL)
+    serverId Int?
+    server   Server? @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
     // Связи
     owner    User?                @relation(fields: [ownerId], references: [id])
     members  ConversationMember[]
@@ -40,6 +48,13 @@ model Message {
     id             Int       @id @default(autoincrement())
     content        String
     imageUrl       String?
+    fileUrl        String?
+    fileName       String?
+    fileSize       Int?
+    fileType       String? // 'image', 'audio', 'video', 'document'
+    audioDuration  Int? // в секундах
+    isPinned       Boolean   @default(false)
+    expiresAt      DateTime? // для самоуничтожающихся сообщений
     editedAt       DateTime?
     deletedAt      DateTime?
     replyToId      Int?
@@ -51,10 +66,55 @@ model Message {
 
     sender       User         @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
     conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+    reactions    Reaction[]
+
+    pinnedIn Conversation? @relation("ConversationPinnedMessage")
+}
+
+// =============== РЕАКЦИИ ===============
+model Reaction {
+    id        Int      @id @default(autoincrement())
+    messageId Int
+    message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+    userId    Int
+    user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+    emoji     String
+    createdAt DateTime @default(now())
+
+    @@unique([messageId, userId, emoji])
+}
+
+// =============== СЕРВЕРЫ (COMMUNITIES) ===============
+model Server {
+    id         Int      @id @default(autoincrement())
+    name       String
+    icon       String?
+    ownerId    Int
+    owner      User     @relation("ServerOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+    inviteCode String   @unique @default(uuid())
+    createdAt  DateTime @default(now())
+    updatedAt  DateTime @updatedAt
+
+    channels Conversation[]
+    members  ServerMember[]
+}
+
+model ServerMember {
+    id       Int      @id @default(autoincrement())
+    userId   Int
+    serverId Int
+    role     String   @default("MEMBER") // OWNER, ADMIN, MEMBER
+    joinedAt DateTime @default(now())
+
+    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+    server Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+    @@unique([userId, serverId])
 }
 
 enum ConvType {
     DIRECT // 1 на 1
     GROUP // групповой чат
-    SERVER_CHANNEL // канал на сервере (позже)
+    SERVER_CHANNEL // канал на сервере
+    SERVER_VOICE // голосовой канал
 }

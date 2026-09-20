@@ -24,15 +24,20 @@ model Friend {
 }
 
 model User {
-  id        Int      @id @default(autoincrement())
-  email     String   @unique
-  username  String   @unique
-  password  String? // 👈 Сделали опциональным для OAuth пользователей
-  name      String? // 👈 Сделали опциональным на случай пустых данных из соцсети
-  surname   String? // 👈 Сделали опциональным
-  avatar    String? // URL аватара пользователя
-  lastSeenAt DateTime? // Время последнего онлайна
-  createdAt DateTime @default(now())
+  id                Int       @id @default(autoincrement())
+  email             String    @unique
+  username          String    @unique
+  password          String? // 👈 Сделали опциональным для OAuth пользователей
+  name              String? // 👈 Сделали опциональным на случай пустых данных из соцсети
+  surname           String? // 👈 Сделали опциональным
+  avatar            String? // URL аватара пользователя
+  lastSeenAt        DateTime? // Время последнего онлайна
+  twoFactorSecret   String? // Секрет TOTP 2FA
+  twoFactorEnabled  Boolean   @default(false)
+  customStatus      String? // Текстовый статус
+  statusEmoji       String? // Эмодзи статуса
+  theme             String?   @default("dark")
+  createdAt         DateTime  @default(now())
 
   // Твои связи
   conversationMemberships ConversationMember[]
@@ -41,6 +46,16 @@ model User {
   friendsSent             Friend[]             @relation("friendSender")
   friendsReceived         Friend[]             @relation("friendReceiver")
 
+  // Серверы
+  ownedServers       Server[]       @relation("ServerOwner")
+  serverMemberships  ServerMember[]
+
+  // Реакции
+  reactions Reaction[]
+
+  // Сессии
+  sessions UserSession[]
+
   // 🔹 Новая связь для масштабирования соцсетей
   socialAccounts SocialAccount[]
 
@@ -48,6 +63,20 @@ model User {
   deviceTokens DeviceToken[]
 
   @@map("users")
+}
+
+model UserSession {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  token      String
+  ip         String?
+  userAgent  String?
+  lastActive DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_sessions")
 }
 
 model SocialAccount {

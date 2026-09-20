@@ -18,10 +18,12 @@ import { PrismaService } from 'src/prisma/prisma.service';
 export class MessageGateway {
   @WebSocketServer()
   server!: Server;
+
   constructor(
     private messageService: MessageService,
     private readonly prisma: PrismaService,
   ) {}
+
   @SubscribeMessage(REQUESTS.messageSend)
   async handleMessageSend(
     @MessageBody() data: SendMessageDto,
@@ -46,7 +48,7 @@ export class MessageGateway {
 
       return {
         status: 'ok',
-        ...result, // Тут будут tempConversationId, realConversationId и fullChat
+        ...result,
       };
     } catch (e) {
       console.error('Ошибка отправки сообщения:', e);
@@ -61,7 +63,6 @@ export class MessageGateway {
   ) {
     const userId = client.user.id;
     try {
-      // 🔹 Проверка участия в чате
       const member = await this.prisma.conversationMember.findUnique({
         where: {
           userId_conversationId: {
@@ -81,7 +82,7 @@ export class MessageGateway {
         userId,
         limit: data.limit,
         beforeId: data.beforeId,
-        fromUnread: data.fromUnread, // 👈 Передаём флаг
+        fromUnread: data.fromUnread,
       });
       return {
         response: result,
@@ -150,6 +151,122 @@ export class MessageGateway {
     } catch (error: any) {
       return {
         error: error?.message || 'Error deleting message',
+        id: data.id,
+      };
+    }
+  }
+
+  @SubscribeMessage(REQUESTS.reactionToggle)
+  async handleReactionToggle(
+    @MessageBody() data: { messageId: number; emoji: string; id?: string },
+    @ConnectedSocket() client: Socket & { user: { id: number } },
+  ) {
+    const userId = client.user.id;
+    try {
+      const result = await this.messageService.toggleReaction(
+        userId,
+        data.messageId,
+        data.emoji,
+      );
+
+      if (result.conversationId) {
+        this.server
+          .to(`chat:${result.conversationId}`)
+          .emit(NOTIFICATIONS.reactionUpdated, result);
+      }
+
+      return {
+        status: 'ok',
+        response: result,
+        id: data.id,
+      };
+    } catch (error: any) {
+      return {
+        error: error?.message || 'Error toggling reaction',
+        id: data.id,
+      };
+    }
+  }
+
+  @SubscribeMessage(REQUESTS.messagePin)
+  async handleMessagePin(
+    @MessageBody() data: { messageId: number; id?: string },
+    @ConnectedSocket() client: Socket & { user: { id: number } },
+  ) {
+    const userId = client.user.id;
+    try {
+      const result = await this.messageService.pinMessage(userId, data.messageId);
+
+      this.server
+        .to(`chat:${result.conversationId}`)
+        .emit(NOTIFICATIONS.messagePinned, result);
+
+      return {
+        status: 'ok',
+        response: result,
+        id: data.id,
+      };
+    } catch (error: any) {
+      return {
+        error: error?.message || 'Error pinning message',
+        id: data.id,
+      };
+    }
+  }
+
+  @SubscribeMessage(REQUESTS.messageUnpin)
+  async handleMessageUnpin(
+    @MessageBody() data: { conversationId: number; id?: string },
+    @ConnectedSocket() client: Socket & { user: { id: number } },
+  ) {
+    const userId = client.user.id;
+    try {
+      const result = await this.messageService.unpinMessage(
+        userId,
+        data.conversationId,
+      );
+
+      this.server
+        .to(`chat:${data.conversationId}`)
+        .emit(NOTIFICATIONS.messagePinned, {
+          conversationId: data.conversationId,
+          pinnedMessage: null,
+        });
+
+      return {
+        status: 'ok',
+        response: result,
+        id: data.id,
+      };
+    } catch (error: any) {
+      return {
+        error: error?.message || 'Error unpinning message',
+        id: data.id,
+      };
+    }
+  }
+
+  @SubscribeMessage(REQUESTS.messageSearch)
+  async handleMessageSearch(
+    @MessageBody() data: { conversationId: number; query: string; id?: string },
+    @ConnectedSocket() client: Socket & { user: { id: number } },
+  ) {
+    const userId = client.user.id;
+    try {
+      const results = await this.messageService.searchMessages(
+        userId,
+        data.conversationId,
+        data.query,
+      );
+
+      return {
+        status: 'ok',
+        response: results,
+        id: data.id,
+      };
+    } catch (error: any) {
+      return {
+        error: error?.message || 'Error searching messages',
         id: data.id,
       };
     }
