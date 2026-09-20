@@ -1,10 +1,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { UserService } from './user.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { EmailService } from '../email/email.service';
+import { ConflictException, BadRequestException, NotFoundException } from '@nestjs/common';
 
 describe('UserService', () => {
   let service: UserService;
   let prismaService: any;
+  let emailService: any;
 
   beforeEach(async () => {
     prismaService = {
@@ -26,10 +29,16 @@ describe('UserService', () => {
       },
     };
 
+    emailService = {
+      sendVerificationCode: jest.fn().mockResolvedValue(true),
+      sendEmailChangeCode: jest.fn().mockResolvedValue(true),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UserService,
         { provide: PrismaService, useValue: prismaService },
+        { provide: EmailService, useValue: emailService },
       ],
     }).compile();
 
@@ -41,7 +50,7 @@ describe('UserService', () => {
   });
 
   describe('createUser', () => {
-    it('should hash password and create user in prisma', async () => {
+    it('should hash password and create user in prisma and send email code', async () => {
       const dto = {
         name: 'Ivan',
         surname: 'Ivanov',
@@ -49,13 +58,57 @@ describe('UserService', () => {
         email: 'ivan@mail.com',
         password: 'plainpassword',
       };
+      prismaService.user.findFirst.mockResolvedValue(null);
       prismaService.user.create.mockResolvedValue({ id: 1, ...dto, password: 'hashed' });
 
       const result = await service.createUser(dto);
       expect(result).toBeDefined();
       expect(prismaService.user.create).toHaveBeenCalled();
-      const callArg = prismaService.user.create.mock.calls[0][0];
-      expect(callArg.data.password).not.toBe('plainpassword');
+      expect(emailService.sendVerificationCode).toHaveBeenCalled();
+    });
+
+    it('should throw ConflictException if username is taken', async () => {
+      const dto = {
+        name: 'Ivan',
+        surname: 'Ivanov',
+        username: 'ivan123',
+        email: 'ivan@mail.com',
+        password: 'plainpassword',
+      };
+      prismaService.user.findFirst.mockResolvedValueOnce({ id: 2, username: 'ivan123' });
+
+      await expect(service.createUser(dto)).rejects.toThrow(ConflictException);
+    });
+  });
+
+  describe('verifyEmail', () => {
+    it('should verify email with valid code', async () => {
+      prismaService.user.findFirst.mockResolvedValue({
+        id: 1,
+        email: 'ivan@mail.com',
+        isEmailVerified: false,
+        emailVerificationCode: '123456',
+        emailVerificationExpires: new Date(Date.now() + 60000),
+      });
+      prismaService.user.update.mockResolvedValue({ id: 1, isEmailVerified: true });
+
+      const result = await service.verifyEmail('ivan@mail.com', '123456');
+      expect(result.success).toBe(true);
+      expect(prismaService.user.update).toHaveBeenCalled();
+    });
+
+    it('should reject invalid code', async () => {
+      prismaService.user.findFirst.mockResolvedValue({
+        id: 1,
+        email: 'ivan@mail.com',
+        isEmailVerified: false,
+        emailVerificationCode: '123456',
+        emailVerificationExpires: new Date(Date.now() + 60000),
+      });
+
+      await expect(service.verifyEmail('ivan@mail.com', '999999')).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 

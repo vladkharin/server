@@ -33,11 +33,17 @@ model User {
   avatar            String? // URL аватара пользователя
   lastSeenAt        DateTime? // Время последнего онлайна
   twoFactorSecret   String? // Секрет TOTP 2FA
-  twoFactorEnabled  Boolean   @default(false)
-  customStatus      String? // Текстовый статус
-  statusEmoji       String? // Эмодзи статуса
-  theme             String?   @default("dark")
-  createdAt         DateTime  @default(now())
+  twoFactorEnabled          Boolean   @default(false)
+  isEmailVerified           Boolean   @default(false)
+  emailVerificationCode     String?
+  emailVerificationExpires  DateTime?
+  pendingNewEmail           String?
+  pendingEmailCode          String?
+  pendingEmailExpires       DateTime?
+  customStatus              String? // Текстовый статус
+  statusEmoji               String? // Эмодзи статуса
+  theme                     String?   @default("dark")
+  createdAt                 DateTime  @default(now())
 
   // Твои связи
   conversationMemberships ConversationMember[]
