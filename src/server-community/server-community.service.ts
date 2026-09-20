@@ -205,4 +205,56 @@ export class ServerCommunityService {
 
     return channel;
   }
+
+  async deleteServer(userId: number, serverId: number) {
+    const server = await this.prisma.server.findUnique({
+      where: { id: serverId },
+    });
+
+    if (!server) {
+      throw new NotFoundException('Сервер не найден');
+    }
+
+    if (server.ownerId !== userId) {
+      throw new BadRequestException('Удалить сервер может только его создатель/владелец');
+    }
+
+    await this.prisma.server.delete({
+      where: { id: serverId },
+    });
+
+    return { success: true, serverId };
+  }
+
+  async leaveServer(userId: number, serverId: number) {
+    const server = await this.prisma.server.findUnique({
+      where: { id: serverId },
+      include: { channels: true },
+    });
+
+    if (!server) {
+      throw new NotFoundException('Сервер не найден');
+    }
+
+    if (server.ownerId === userId) {
+      throw new BadRequestException('Владелец не может покинуть сервер. Вы можете только удалить его.');
+    }
+
+    await this.prisma.serverMember.deleteMany({
+      where: { userId, serverId },
+    });
+
+    // Удаляем из всех каналов сервера
+    const channelIds = server.channels.map((c) => c.id);
+    if (channelIds.length > 0) {
+      await this.prisma.conversationMember.deleteMany({
+        where: {
+          userId,
+          conversationId: { in: channelIds },
+        },
+      });
+    }
+
+    return { success: true, serverId };
+  }
 }

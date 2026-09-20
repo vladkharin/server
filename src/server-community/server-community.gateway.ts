@@ -152,4 +152,54 @@ export class ServerCommunityGateway {
       };
     }
   }
+
+  @SubscribeMessage(REQUESTS.serverDelete)
+  async handleServerDelete(
+    @MessageBody() data: { serverId: number; id?: string },
+    @ConnectedSocket() client: Socket & { user: { id: number } },
+  ) {
+    const userId = client.user.id;
+    try {
+      const result = await this.serverCommunityService.deleteServer(
+        userId,
+        data.serverId,
+      );
+
+      return {
+        status: 'ok',
+        response: result,
+        id: data.id,
+      };
+    } catch (error: any) {
+      return {
+        error: error?.message || 'Error deleting server',
+        id: data.id,
+      };
+    }
+  }
+
+  @SubscribeMessage(REQUESTS.serverLeave)
+  async handleServerLeave(
+    @MessageBody() data: { serverId: number; id?: string },
+    @ConnectedSocket() client: Socket & { user: { id: number } },
+  ) {
+    const userId = client.user.id;
+    try {
+      const result = await this.serverCommunityService.leaveServer(
+        userId,
+        data.serverId,
+      );
+
+      return {
+        status: 'ok',
+        response: result,
+        id: data.id,
+      };
+    } catch (error: any) {
+      return {
+        error: error?.message || 'Error leaving server',
+        id: data.id,
+      };
+    }
+  }
 }
