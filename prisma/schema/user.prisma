@@ -30,6 +30,7 @@ model User {
   password  String? // 👈 Сделали опциональным для OAuth пользователей
   name      String? // 👈 Сделали опциональным на случай пустых данных из соцсети
   surname   String? // 👈 Сделали опциональным
+  avatar    String? // URL аватара пользователя
   createdAt DateTime @default(now())
 
   // Твои связи

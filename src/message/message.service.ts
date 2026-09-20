@@ -10,6 +10,7 @@ import { NOTIFICATIONS } from 'src/commands/commands';
 export interface SendMessageDto {
   conversationId: number;
   content: string;
+  imageUrl?: string;
   isTemporary?: boolean;
   targetUserId?: number;
 }
@@ -80,7 +81,8 @@ export class MessageService {
     // 3. Создание сообщения
     const message = await this.prisma.message.create({
       data: {
-        content: dto.content,
+        content: dto.content || (dto.imageUrl ? '📷 Фотография' : ''),
+        imageUrl: dto.imageUrl,
         senderId: userId,
         conversationId,
       },
@@ -108,10 +110,11 @@ export class MessageService {
       const recipientIds = otherMembers.map((m) => m.userId);
       if (recipientIds.length > 0) {
         const senderName = message.sender?.username || 'Пользователь';
-        const preview =
-          dto.content.length > 80
+        const preview = dto.content
+          ? dto.content.length > 80
             ? dto.content.slice(0, 80) + '...'
-            : dto.content;
+            : dto.content
+          : '📷 Фотография';
 
         this.pushService
           .sendPushToUsers(recipientIds, {

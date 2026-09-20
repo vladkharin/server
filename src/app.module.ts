@@ -11,6 +11,7 @@ import { MessageModule } from './message/message.module';
 import { WebsocketModule } from './websocket/websocket.module';
 import { GroupChatModule } from './groupChat/groupChat.module';
 import { PushModule } from './push/push.module';
+import { UploadModule } from './upload/upload.module';
 const envFilePath = path.resolve(__dirname, '../.env');
 
 @Module({
@@ -29,6 +30,7 @@ const envFilePath = path.resolve(__dirname, '../.env');
     WebsocketModule,
     GroupChatModule,
     PushModule,
+    UploadModule,
   ],
 })
 export class AppModule {}
