@@ -19,17 +19,28 @@ export class EmailService {
       this.configService.get<string>('SMTP_FROM') ||
       (user ? `"CraftHive" <${user}>` : '"CraftHive" <no-reply@crafthive.ru>');
 
-    if (host && user && pass) {
-      this.transporter = nodemailer.createTransport({
-        host,
-        port,
-        secure,
-        auth: { user, pass },
-        tls: {
-          rejectUnauthorized: false,
-        },
-      });
-      this.logger.log(`📧 SMTP Transporter инициализирован (${host}:${port}, secure=${secure})`);
+    if (user && pass) {
+      if (host === 'smtp.gmail.com' || (!host && user.endsWith('@gmail.com'))) {
+        this.transporter = nodemailer.createTransport({
+          service: 'gmail',
+          auth: { user, pass },
+          tls: {
+            rejectUnauthorized: false,
+          },
+        });
+        this.logger.log(`📧 Gmail SMTP Transporter инициализирован для ${user}`);
+      } else if (host) {
+        this.transporter = nodemailer.createTransport({
+          host,
+          port,
+          secure,
+          auth: { user, pass },
+          tls: {
+            rejectUnauthorized: false,
+          },
+        });
+        this.logger.log(`📧 SMTP Transporter инициализирован (${host}:${port}, secure=${secure})`);
+      }
     } else {
       this.logger.warn(
         '⚠️ SMTP параметры не заданы (SMTP_HOST, SMTP_USER, SMTP_PASS). Письма будут логироваться в консоль.',
