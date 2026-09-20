@@ -26,22 +26,24 @@ export class EmailService {
           port: 465,
           secure: true,
           auth: { user, pass },
+          family: 4,
           tls: {
             rejectUnauthorized: false,
           },
-        });
-        this.logger.log(`📧 Gmail SMTP (SSL 465) Transporter инициализирован для ${user}`);
+        } as nodemailer.TransportOptions);
+        this.logger.log(`📧 Gmail SMTP (SSL 465, IPv4) Transporter инициализирован для ${user}`);
       } else if (host) {
         this.transporter = nodemailer.createTransport({
           host,
           port,
           secure,
           auth: { user, pass },
+          family: 4,
           tls: {
             rejectUnauthorized: false,
           },
-        });
-        this.logger.log(`📧 SMTP Transporter инициализирован (${host}:${port}, secure=${secure}) для ${user}`);
+        } as nodemailer.TransportOptions);
+        this.logger.log(`📧 SMTP Transporter инициализирован (${host}:${port}, secure=${secure}, IPv4) для ${user}`);
       }
 
       if (this.transporter) {
