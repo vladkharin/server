@@ -81,9 +81,35 @@ export class MessageService {
     }
 
     // 2. Проверка доступа
-    const member = await this.prisma.conversationMember.findUnique({
+    let member = await this.prisma.conversationMember.findUnique({
       where: { userId_conversationId: { userId, conversationId } },
     });
+
+    if (!member) {
+      const conv = await this.prisma.conversation.findUnique({
+        where: { id: conversationId },
+        select: { serverId: true },
+      });
+
+      if (conv?.serverId) {
+        const serverMember = await this.prisma.serverMember.findUnique({
+          where: {
+            userId_serverId: {
+              userId,
+              serverId: conv.serverId,
+            },
+          },
+        });
+
+        if (serverMember) {
+          member = await this.prisma.conversationMember.upsert({
+            where: { userId_conversationId: { userId, conversationId } },
+            create: { userId, conversationId },
+            update: {},
+          });
+        }
+      }
+    }
 
     if (!member) {
       throw new Error('У вас нет доступа к этому чату');

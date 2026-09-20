@@ -63,7 +63,7 @@ export class MessageGateway {
   ) {
     const userId = client.user.id;
     try {
-      const member = await this.prisma.conversationMember.findUnique({
+      let member = await this.prisma.conversationMember.findUnique({
         where: {
           userId_conversationId: {
             userId,
@@ -71,6 +71,42 @@ export class MessageGateway {
           },
         },
       });
+
+      if (!member) {
+        const conversation = await this.prisma.conversation.findUnique({
+          where: { id: data.conversationId },
+          select: { serverId: true },
+        });
+
+        if (conversation?.serverId) {
+          const serverMember = await this.prisma.serverMember.findUnique({
+            where: {
+              userId_serverId: {
+                userId,
+                serverId: conversation.serverId,
+              },
+            },
+          });
+
+          if (serverMember) {
+            member = await this.prisma.conversationMember.upsert({
+              where: {
+                userId_conversationId: {
+                  userId,
+                  conversationId: data.conversationId,
+                },
+              },
+              create: {
+                userId,
+                conversationId: data.conversationId,
+              },
+              update: {},
+            });
+            await client.join(`chat:${data.conversationId}`);
+          }
+        }
+      }
+
       if (!member) {
         return {
           error: 'Not a member',

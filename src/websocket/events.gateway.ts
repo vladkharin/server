@@ -71,6 +71,26 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         await client.join(`chat:${member.conversationId}`);
       }
 
+      // Также подключаем ко всем каналам серверов, на которых состоит пользователь
+      const userServers = await this.prisma.serverMember.findMany({
+        where: { userId: user.id },
+        include: {
+          server: {
+            include: {
+              channels: { select: { id: true } },
+            },
+          },
+        },
+      });
+
+      for (const sm of userServers) {
+        if (sm.server?.channels) {
+          for (const ch of sm.server.channels) {
+            await client.join(`chat:${ch.id}`);
+          }
+        }
+      }
+
       console.log(`✅ User ${user.id} connected (Socket: ${client.id})`);
       client.emit('auth:ready');
     } catch (_e) {

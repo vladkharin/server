@@ -46,6 +46,20 @@ export class ServerCommunityService {
       },
     });
 
+    // Добавляем создателя во все созданные каналы сервера
+    for (const channel of server.channels) {
+      await this.prisma.conversationMember.upsert({
+        where: {
+          userId_conversationId: { userId, conversationId: channel.id },
+        },
+        create: {
+          userId,
+          conversationId: channel.id,
+        },
+        update: {},
+      });
+    }
+
     return server;
   }
 
