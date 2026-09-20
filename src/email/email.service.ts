@@ -11,20 +11,25 @@ export class EmailService {
   constructor(private readonly configService: ConfigService) {
     const host = this.configService.get<string>('SMTP_HOST');
     const port = Number(this.configService.get<number>('SMTP_PORT') || 587);
+    const secure =
+      this.configService.get<string>('SMTP_SECURE') === 'true' || port === 465;
     const user = this.configService.get<string>('SMTP_USER');
     const pass = this.configService.get<string>('SMTP_PASS');
     this.fromAddress =
       this.configService.get<string>('SMTP_FROM') ||
-      '"CraftHive" <no-reply@crafthive.ru>';
+      (user ? `"CraftHive" <${user}>` : '"CraftHive" <no-reply@crafthive.ru>');
 
     if (host && user && pass) {
       this.transporter = nodemailer.createTransport({
         host,
         port,
-        secure: port === 465,
+        secure,
         auth: { user, pass },
+        tls: {
+          rejectUnauthorized: false,
+        },
       });
-      this.logger.log(`📧 SMTP Transporter инициализирован (${host}:${port})`);
+      this.logger.log(`📧 SMTP Transporter инициализирован (${host}:${port}, secure=${secure})`);
     } else {
       this.logger.warn(
         '⚠️ SMTP параметры не заданы (SMTP_HOST, SMTP_USER, SMTP_PASS). Письма будут логироваться в консоль.',
