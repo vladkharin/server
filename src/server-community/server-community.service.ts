@@ -127,11 +127,37 @@ export class ServerCommunityService {
     return server;
   }
 
-  async joinServer(userId: number, inviteCode: string) {
+  async getInviteInfo(inviteCode: string) {
+    const cleanCode = inviteCode.replace(/.*\/invite\//, '').trim();
     const server = await this.prisma.server.findUnique({
-      where: { inviteCode },
+      where: { inviteCode: cleanCode },
+      include: {
+        owner: { select: { id: true, username: true, avatar: true } },
+        channels: { select: { id: true, name: true, type: true } },
+        _count: { select: { members: true } },
+      },
+    });
+
+    if (!server) throw new NotFoundException('Приглашение недействительно или сервер удален');
+
+    return {
+      id: server.id,
+      name: server.name,
+      icon: server.icon,
+      inviteCode: server.inviteCode,
+      membersCount: server._count.members,
+      owner: server.owner,
+      channelsCount: server.channels.length,
+    };
+  }
+
+  async joinServer(userId: number, inviteCode: string) {
+    const cleanCode = inviteCode.replace(/.*\/invite\//, '').trim();
+    const server = await this.prisma.server.findUnique({
+      where: { inviteCode: cleanCode },
       include: { channels: true },
     });
+
 
     if (!server) throw new NotFoundException('Сервер по этой ссылке не найден');
 

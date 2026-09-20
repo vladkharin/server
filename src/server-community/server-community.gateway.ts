@@ -113,6 +113,29 @@ export class ServerCommunityGateway {
     }
   }
 
+  @SubscribeMessage(REQUESTS.serverInviteInfo)
+  async handleServerInviteInfo(
+    @MessageBody() data: { inviteCode: string; id?: string },
+    @ConnectedSocket() _client: Socket,
+  ) {
+    try {
+      const info = await this.serverCommunityService.getInviteInfo(
+        data.inviteCode,
+      );
+      return {
+        status: 'ok',
+        response: info,
+        id: data.id,
+      };
+    } catch (error: any) {
+      return {
+        error: error?.message || 'Error fetching invite info',
+        id: data.id,
+      };
+    }
+  }
+
+
   @SubscribeMessage(REQUESTS.channelCreate)
   async handleChannelCreate(
     @MessageBody()
