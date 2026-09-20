@@ -30,12 +30,19 @@ export class PushService implements OnModuleInit {
         'firebase-adminsdk.json',
       );
 
-      if (serviceAccount) {
-        let certObj: ServiceAccount;
+        if (serviceAccount) {
+        let certObj: any;
         try {
           certObj = JSON.parse(serviceAccount);
         } catch {
           certObj = require(path.resolve(process.cwd(), serviceAccount));
+        }
+
+        if (certObj?.private_key) {
+          certObj.private_key = certObj.private_key.replace(/\\n/g, '\n');
+        }
+        if (certObj?.privateKey) {
+          certObj.privateKey = certObj.privateKey.replace(/\\n/g, '\n');
         }
 
         this.firebaseApp = initializeApp({
@@ -44,6 +51,13 @@ export class PushService implements OnModuleInit {
         this.logger.log('🔥 Firebase Admin SDK успешно инициализирован');
       } else if (fs.existsSync(defaultJsonPath)) {
         const certObj = require(defaultJsonPath);
+        if (certObj?.private_key) {
+          certObj.private_key = certObj.private_key.replace(/\\n/g, '\n');
+        }
+        if (certObj?.privateKey) {
+          certObj.privateKey = certObj.privateKey.replace(/\\n/g, '\n');
+        }
+
         this.firebaseApp = initializeApp({
           credential: cert(certObj),
         });
