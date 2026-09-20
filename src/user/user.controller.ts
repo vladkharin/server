@@ -21,13 +21,28 @@ export class UserController {
   }
 
   @Post('/verify-email')
-  async verifyEmail(@Body() body: { email: string; code: string }) {
+  async verifyEmail(@Body() body: { email?: string; code?: string }) {
     return this.userService.verifyEmail(body.email, body.code);
   }
 
   @Post('/resend-verification')
-  async resendVerification(@Body() body: { email: string }) {
+  async resendVerification(@Body() body: { email?: string }) {
     return this.userService.resendVerification(body.email);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/verify-email-me')
+  async verifyEmailMe(
+    @Req() req: { user: { id: number } },
+    @Body() body: { code: string },
+  ) {
+    return this.userService.verifyEmail(undefined, body.code, req.user.id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/resend-verification-me')
+  async resendVerificationMe(@Req() req: { user: { id: number } }) {
+    return this.userService.resendVerification(undefined, req.user.id);
   }
 
   @UseGuards(JwtAuthGuard)

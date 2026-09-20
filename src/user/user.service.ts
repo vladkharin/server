@@ -81,15 +81,25 @@ export class UserService {
     return user;
   }
 
-  async verifyEmail(emailOrUsername: string, code: string) {
-    const user = await this.prisma.user.findFirst({
-      where: {
-        OR: [
-          { email: { equals: emailOrUsername.trim(), mode: 'insensitive' } },
-          { username: { equals: emailOrUsername.trim(), mode: 'insensitive' } },
-        ],
-      },
-    });
+  async verifyEmail(emailOrUsername?: string, code?: string, userId?: number) {
+    if (!code || !code.trim()) {
+      throw new BadRequestException('Укажите код подтверждения');
+    }
+
+    let user: any = null;
+    if (userId) {
+      user = await this.prisma.user.findUnique({ where: { id: userId } });
+    } else if (emailOrUsername && emailOrUsername.trim()) {
+      const term = emailOrUsername.trim();
+      user = await this.prisma.user.findFirst({
+        where: {
+          OR: [
+            { email: { equals: term, mode: 'insensitive' } },
+            { username: { equals: term, mode: 'insensitive' } },
+          ],
+        },
+      });
+    }
 
     if (!user) {
       throw new NotFoundException('Пользователь не найден');
@@ -119,15 +129,21 @@ export class UserService {
     return { success: true, message: 'Email успешно подтвержден!', isEmailVerified: true };
   }
 
-  async resendVerification(emailOrUsername: string) {
-    const user = await this.prisma.user.findFirst({
-      where: {
-        OR: [
-          { email: { equals: emailOrUsername.trim(), mode: 'insensitive' } },
-          { username: { equals: emailOrUsername.trim(), mode: 'insensitive' } },
-        ],
-      },
-    });
+  async resendVerification(emailOrUsername?: string, userId?: number) {
+    let user: any = null;
+    if (userId) {
+      user = await this.prisma.user.findUnique({ where: { id: userId } });
+    } else if (emailOrUsername && emailOrUsername.trim()) {
+      const term = emailOrUsername.trim();
+      user = await this.prisma.user.findFirst({
+        where: {
+          OR: [
+            { email: { equals: term, mode: 'insensitive' } },
+            { username: { equals: term, mode: 'insensitive' } },
+          ],
+        },
+      });
+    }
 
     if (!user) {
       throw new NotFoundException('Пользователь не найден');
