@@ -30,30 +30,29 @@ jobs:
           npm run build
           tar -czf backend-build.tar.gz dist prisma package.json package-lock.json
 
-      - name: 🚚 Transfer Archive to VPS via SCP
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          password: ${{ secrets.SERVER_PASSWORD }}
-          port: ${{ secrets.SERVER_PORT || 22 }}
-          source: "backend-build.tar.gz"
-          target: "~/projects/messenger-backend"
-          overwrite: true
+      - name: 🚚 Transfer & Deploy via Native SSH
+        env:
+          SSHPASS: ${{ secrets.SERVER_PASSWORD }}
+          HOST: ${{ secrets.SERVER_HOST }}
+          USER: ${{ secrets.SERVER_USER }}
+          PORT: ${{ secrets.SERVER_PORT || 22 }}
+        run: |
+          sudo apt-get update -y && sudo apt-get install -y sshpass
 
-      - name: 🔄 Extract, Migrate DB & Restart PM2 on VPS
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          password: ${{ secrets.SERVER_PASSWORD }}
-          port: ${{ secrets.SERVER_PORT || 22 }}
-          script: |
-            cd ~/projects/messenger-backend || exit 1
-            tar -xzf backend-build.tar.gz
-            rm -f backend-build.tar.gz
-            npm install --production --prefer-offline || true
-            npx prisma generate || true
-            npx prisma db push --skip-generate || true
-            pm2 restart messenger-server || pm2 start dist/main.js --name "messenger-server"
-            echo "✅ Messenger Backend deployed successfully!"
+          # 1. Создаем папку на сервере если нет
+          sshpass -e ssh -o StrictHostKeyChecking=no -p $PORT $USER@$HOST "mkdir -p ~/projects/messenger-backend"
+
+          # 2. Быстро передаем компактный архив
+          sshpass -e scp -o StrictHostKeyChecking=no -P $PORT backend-build.tar.gz $USER@$HOST:~/projects/messenger-backend/
+
+          # 3. Распаковываем, накатываем БД и перезапускаем PM2
+          sshpass -e ssh -o StrictHostKeyChecking=no -p $PORT $USER@$HOST "
+            cd ~/projects/messenger-backend &&
+            tar -xzf backend-build.tar.gz &&
+            rm -f backend-build.tar.gz &&
+            npm install --production --prefer-offline || true &&
+            npx prisma generate || true &&
+            npx prisma db push --skip-generate || true &&
+            pm2 restart messenger-server || pm2 start dist/main.js --name 'messenger-server' &&
+            echo '✅ Messenger Backend deployed successfully!'
+          "
