@@ -94,4 +94,90 @@ export class MessageGateway {
       };
     }
   }
+
+  @SubscribeMessage(REQUESTS.messageEdit)
+  async handleMessageEdit(
+    @MessageBody() data: { messageId: number; content: string; id?: string },
+    @ConnectedSocket() client: Socket & { user: { id: number } },
+  ) {
+    const userId = client.user.id;
+    try {
+      const updatedMessage = await this.messageService.editMessage(userId, {
+        messageId: data.messageId,
+        content: data.content,
+      });
+
+      this.server
+        .to(`chat:${updatedMessage.conversationId}`)
+        .emit(NOTIFICATIONS.messageUpdated, updatedMessage);
+
+      return {
+        status: 'ok',
+        response: updatedMessage,
+        id: data.id,
+      };
+    } catch (error: any) {
+      return {
+        error: error?.message || 'Error editing message',
+        id: data.id,
+      };
+    }
+  }
+
+  @SubscribeMessage(REQUESTS.messageDelete)
+  async handleMessageDelete(
+    @MessageBody() data: { messageId: number; id?: string },
+    @ConnectedSocket() client: Socket & { user: { id: number } },
+  ) {
+    const userId = client.user.id;
+    try {
+      const result = await this.messageService.deleteMessage(userId, {
+        messageId: data.messageId,
+      });
+
+      this.server
+        .to(`chat:${result.conversationId}`)
+        .emit(NOTIFICATIONS.messageDeleted, {
+          messageId: data.messageId,
+          conversationId: result.conversationId,
+        });
+
+      return {
+        status: 'ok',
+        response: result,
+        id: data.id,
+      };
+    } catch (error: any) {
+      return {
+        error: error?.message || 'Error deleting message',
+        id: data.id,
+      };
+    }
+  }
+
+  @SubscribeMessage(REQUESTS.typingStart)
+  handleTypingStart(
+    @MessageBody() data: { conversationId: number },
+    @ConnectedSocket() client: Socket & { user: { id: number; username: string } },
+  ) {
+    client.to(`chat:${data.conversationId}`).emit(NOTIFICATIONS.userTyping, {
+      userId: client.user.id,
+      username: client.user.username,
+      conversationId: data.conversationId,
+      isTyping: true,
+    });
+  }
+
+  @SubscribeMessage(REQUESTS.typingStop)
+  handleTypingStop(
+    @MessageBody() data: { conversationId: number },
+    @ConnectedSocket() client: Socket & { user: { id: number; username: string } },
+  ) {
+    client.to(`chat:${data.conversationId}`).emit(NOTIFICATIONS.userTyping, {
+      userId: client.user.id,
+      username: client.user.username,
+      conversationId: data.conversationId,
+      isTyping: false,
+    });
+  }
 }

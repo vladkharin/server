@@ -37,10 +37,15 @@ model ConversationMember {
 
 // =============== СООБЩЕНИЯ ===============
 model Message {
-    id             Int      @id @default(autoincrement())
+    id             Int       @id @default(autoincrement())
     content        String
     imageUrl       String?
-    createdAt      DateTime @default(now())
+    editedAt       DateTime?
+    deletedAt      DateTime?
+    replyToId      Int?
+    replyTo        Message?  @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+    replies        Message[] @relation("MessageReplies")
+    createdAt      DateTime  @default(now())
     senderId       Int
     conversationId Int
 

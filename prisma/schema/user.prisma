@@ -31,6 +31,7 @@ model User {
   name      String? // 👈 Сделали опциональным на случай пустых данных из соцсети
   surname   String? // 👈 Сделали опциональным
   avatar    String? // URL аватара пользователя
+  lastSeenAt DateTime? // Время последнего онлайна
   createdAt DateTime @default(now())
 
   // Твои связи

@@ -11,8 +11,18 @@ export interface SendMessageDto {
   conversationId: number;
   content: string;
   imageUrl?: string;
+  replyToId?: number;
   isTemporary?: boolean;
   targetUserId?: number;
+}
+
+export interface EditMessageDto {
+  messageId: number;
+  content: string;
+}
+
+export interface DeleteMessageDto {
+  messageId: number;
 }
 
 export interface GetMessagesDto {
@@ -83,11 +93,20 @@ export class MessageService {
       data: {
         content: dto.content || (dto.imageUrl ? '📷 Фотография' : ''),
         imageUrl: dto.imageUrl,
+        replyToId: dto.replyToId,
         senderId: userId,
         conversationId,
       },
       include: {
         sender: { select: { id: true, username: true } },
+        replyTo: {
+          select: {
+            id: true,
+            content: true,
+            imageUrl: true,
+            sender: { select: { id: true, username: true } },
+          },
+        },
       },
     });
 
@@ -226,18 +245,30 @@ export class MessageService {
       });
     }
 
+    const messageInclude = {
+      sender: { select: { id: true, username: true } },
+      replyTo: {
+        select: {
+          id: true,
+          content: true,
+          imageUrl: true,
+          sender: { select: { id: true, username: true } },
+        },
+      },
+    };
+
     // 🔹 3. Умная логика загрузки
-    let messages: Message[] = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let messages: any[] = [];
 
     if (beforeId) {
       messages = await this.prisma.message.findMany({
         where: {
           conversationId,
           id: { lt: beforeId },
+          deletedAt: null,
         },
-        include: {
-          sender: { select: { id: true, username: true } },
-        },
+        include: messageInclude,
         orderBy: { createdAt: 'desc' },
         take: limit,
       });
@@ -247,10 +278,9 @@ export class MessageService {
         where: {
           conversationId,
           id: { gt: afterId },
+          deletedAt: null,
         },
-        include: {
-          sender: { select: { id: true, username: true } },
-        },
+        include: messageInclude,
         orderBy: { createdAt: 'asc' },
         take: limit,
       });
@@ -259,25 +289,24 @@ export class MessageService {
         where: {
           conversationId,
           id: { gte: firstUnreadId },
+          deletedAt: null,
         },
-        include: {
-          sender: { select: { id: true, username: true } },
-        },
+        include: messageInclude,
         orderBy: { createdAt: 'asc' },
       });
 
       const needContext = Math.max(0, limit - unreadMessages.length);
 
-      let olderContext: Message[] = [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let olderContext: any[] = [];
       if (needContext > 0) {
         olderContext = await this.prisma.message.findMany({
           where: {
             conversationId,
             id: { lt: firstUnreadId },
+            deletedAt: null,
           },
-          include: {
-            sender: { select: { id: true, username: true } },
-          },
+          include: messageInclude,
           orderBy: { createdAt: 'desc' },
           take: needContext,
         });
@@ -287,10 +316,8 @@ export class MessageService {
       messages = [...olderContext, ...unreadMessages];
     } else {
       messages = await this.prisma.message.findMany({
-        where: { conversationId },
-        include: {
-          sender: { select: { id: true, username: true } },
-        },
+        where: { conversationId, deletedAt: null },
+        include: messageInclude,
         orderBy: { createdAt: 'desc' },
         take: limit,
       });
@@ -321,6 +348,77 @@ export class MessageService {
       firstUnreadId,
       loadedFromUnread:
         !beforeId && !afterId && !!firstUnreadId && unreadCount > 0,
+    };
+  }
+
+  // 🔹 МЕТОД: Редактирование сообщения
+  async editMessage(userId: number, dto: EditMessageDto) {
+    const message = await this.prisma.message.findUnique({
+      where: { id: dto.messageId },
+      include: { conversation: true },
+    });
+
+    if (!message) {
+      throw new Error('Сообщение не найдено');
+    }
+
+    if (message.senderId !== userId) {
+      throw new Error('Вы можете редактировать только свои сообщения');
+    }
+
+    if (message.deletedAt) {
+      throw new Error('Сообщение было удалено');
+    }
+
+    const updated = await this.prisma.message.update({
+      where: { id: dto.messageId },
+      data: {
+        content: dto.content,
+        editedAt: new Date(),
+      },
+      include: {
+        sender: { select: { id: true, username: true } },
+        replyTo: {
+          select: {
+            id: true,
+            content: true,
+            imageUrl: true,
+            sender: { select: { id: true, username: true } },
+          },
+        },
+      },
+    });
+
+    return updated;
+  }
+
+  // 🔹 МЕТОД: Удаление сообщения
+  async deleteMessage(userId: number, dto: DeleteMessageDto) {
+    const message = await this.prisma.message.findUnique({
+      where: { id: dto.messageId },
+      include: { conversation: true },
+    });
+
+    if (!message) {
+      throw new Error('Сообщение не найдено');
+    }
+
+    const isAuthor = message.senderId === userId;
+    const isOwner = message.conversation?.ownerId === userId;
+
+    if (!isAuthor && !isOwner) {
+      throw new Error('У вас нет прав для удаления этого сообщения');
+    }
+
+    await this.prisma.message.update({
+      where: { id: dto.messageId },
+      data: { deletedAt: new Date() },
+    });
+
+    return {
+      success: true,
+      messageId: dto.messageId,
+      conversationId: message.conversationId,
     };
   }
 }
