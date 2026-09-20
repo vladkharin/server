@@ -233,15 +233,15 @@ export class MessageService {
   ) {
     if (!content) return;
 
-    if (content.startsWith('/ai ')) {
-      const query = content.replace('/ai ', '').trim();
+    if (content === '/ai' || content.startsWith('/ai ')) {
+      const query = content.replace('/ai', '').trim() || 'Помощь по CraftHive';
       const aiReply = await this.generateAiResponse(query);
       await this.sendSystemBotMessage(conversationId, aiReply, server);
     } else if (content === '/summary' || content.startsWith('/summary ')) {
       const summary = await this.generateChatSummary(conversationId);
       await this.sendSystemBotMessage(conversationId, summary, server);
-    } else if (content.startsWith('/translate ')) {
-      const target = content.replace('/translate ', '').trim();
+    } else if (content === '/translate' || content.startsWith('/translate ')) {
+      const target = content.replace('/translate', '').trim() || 'ru';
       const translation = await this.generateTranslation(conversationId, target);
       await this.sendSystemBotMessage(conversationId, translation, server);
     }
@@ -319,7 +319,7 @@ export class MessageService {
       },
     });
 
-    server.to(`conversation:${conversationId}`).emit(NOTIFICATIONS.messageNew, message);
+    server.to(`chat:${conversationId}`).emit(NOTIFICATIONS.messageNew, message);
   }
 
   // Сборка чата

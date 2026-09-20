@@ -310,7 +310,7 @@ export class MessageGateway {
 
   @SubscribeMessage(REQUESTS.typingStart)
   handleTypingStart(
-    @MessageBody() data: { conversationId: number },
+    @MessageBody() data: { conversationId: number; id?: string },
     @ConnectedSocket() client: Socket & { user: { id: number; username: string } },
   ) {
     client.to(`chat:${data.conversationId}`).emit(NOTIFICATIONS.userTyping, {
@@ -319,11 +319,12 @@ export class MessageGateway {
       conversationId: data.conversationId,
       isTyping: true,
     });
+    return { status: 'ok', id: data.id };
   }
 
   @SubscribeMessage(REQUESTS.typingStop)
   handleTypingStop(
-    @MessageBody() data: { conversationId: number },
+    @MessageBody() data: { conversationId: number; id?: string },
     @ConnectedSocket() client: Socket & { user: { id: number; username: string } },
   ) {
     client.to(`chat:${data.conversationId}`).emit(NOTIFICATIONS.userTyping, {
@@ -332,5 +333,6 @@ export class MessageGateway {
       conversationId: data.conversationId,
       isTyping: false,
     });
+    return { status: 'ok', id: data.id };
   }
 }
