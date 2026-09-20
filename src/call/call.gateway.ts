@@ -115,6 +115,18 @@ export class CallGateway {
         userId,
         data.conversationId,
       );
+
+      // Оповещаем о списке участников в голосовой комнате
+      this.callService
+        .getRoomUsers(data.conversationId)
+        .then((users) => {
+          this.server.to(`chat:${data.conversationId}`).emit('voice:roomUsers', {
+            conversationId: data.conversationId,
+            users,
+          });
+        })
+        .catch(() => {});
+
       return { response: transportParams, id: data.id };
     } catch (e: unknown) {
       return {
@@ -175,6 +187,16 @@ export class CallGateway {
         conversationId: data.conversationId,
       });
 
+      this.callService
+        .getRoomUsers(data.conversationId)
+        .then((users) => {
+          this.server.to(`chat:${data.conversationId}`).emit('voice:roomUsers', {
+            conversationId: data.conversationId,
+            users,
+          });
+        })
+        .catch(() => {});
+
       return { response: { id: producerId }, id: data.id };
     } catch (e: unknown) {
       return {
@@ -227,6 +249,22 @@ export class CallGateway {
     }
   }
 
+  @SubscribeMessage(REQUESTS.getRoomUsers)
+  async handleGetRoomUsers(
+    @MessageBody() data: { conversationId: number; id: string },
+    @ConnectedSocket() _client: Socket,
+  ) {
+    try {
+      const users = await this.callService.getRoomUsers(data.conversationId);
+      return { response: users, id: data.id };
+    } catch (e: unknown) {
+      return {
+        error: e instanceof Error ? e.message : 'Unknown error',
+        id: data.id,
+      };
+    }
+  }
+
   // --- 5. ЗАВЕРШЕНИЕ ---
 
   @SubscribeMessage(REQUESTS.leaveRoom)
@@ -250,3 +288,4 @@ export class CallGateway {
     }
   }
 }
+

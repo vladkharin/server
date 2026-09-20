@@ -502,6 +502,42 @@ export class CallService {
     }
     return result;
   }
+  async getRoomUsers(conversationId: number) {
+    const room = this.rooms.get(Number(conversationId));
+    if (!room || room.peers.size === 0) return [];
+
+    const userIds = Array.from(room.peers.keys());
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: {
+        id: true,
+        username: true,
+        name: true,
+        surname: true,
+        avatar: true,
+        customStatus: true,
+        statusEmoji: true,
+      },
+    });
+
+    return users.map((u) => {
+      const peer = room.peers.get(u.id);
+      let hasAudio = false;
+      let hasVideo = false;
+      if (peer) {
+        for (const prod of peer.producers.values()) {
+          if (prod.kind === 'audio') hasAudio = true;
+          if (prod.kind === 'video') hasVideo = true;
+        }
+      }
+      return {
+        ...u,
+        hasAudio,
+        hasVideo,
+      };
+    });
+  }
+
   // --- Выход и завершение ---
 
   async handleLeaveRoom(
@@ -530,6 +566,11 @@ export class CallService {
       peer.transports.forEach((t) => t.close());
       room.peers.delete(userId);
       server.to(`chat:${conversationId}`).emit('call:peerLeft', { userId });
+      const remainingUsers = await this.getRoomUsers(conversationId);
+      server.to(`chat:${conversationId}`).emit('voice:roomUsers', {
+        conversationId,
+        users: remainingUsers,
+      });
     }
 
     if (room.peers.size === 0) {
@@ -548,3 +589,4 @@ export class CallService {
     }
   }
 }
+
