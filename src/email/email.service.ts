@@ -9,10 +9,11 @@ export class EmailService {
   private readonly fromAddress: string;
 
   constructor(private readonly configService: ConfigService) {
-    const host = this.configService.get<string>('SMTP_HOST');
-    const port = Number(this.configService.get<number>('SMTP_PORT') || 587);
-    const secure =
-      this.configService.get<string>('SMTP_SECURE') === 'true' || port === 465;
+    const host = this.configService.get<string>('SMTP_HOST') || 'smtp.gmail.com';
+    const portEnv = this.configService.get<string | number>('SMTP_PORT');
+    const port = portEnv ? Number(portEnv) : 587;
+    const secureEnv = this.configService.get<string>('SMTP_SECURE');
+    const secure = secureEnv !== undefined ? secureEnv === 'true' : port === 465;
     const user = this.configService.get<string>('SMTP_USER');
     const pass = this.configService.get<string>('SMTP_PASS');
     this.fromAddress =
@@ -20,46 +21,66 @@ export class EmailService {
       (user ? `"CraftHive" <${user}>` : '"CraftHive" <no-reply@crafthive.ru>');
 
     if (user && pass) {
-      if (host === 'smtp.gmail.com' || (!host && user.endsWith('@gmail.com'))) {
-        this.transporter = nodemailer.createTransport({
-          host: 'smtp.gmail.com',
-          port: 465,
-          secure: true,
-          auth: { user, pass },
-          family: 4,
-          tls: {
-            rejectUnauthorized: false,
-          },
-        } as nodemailer.TransportOptions);
-        this.logger.log(`📧 Gmail SMTP (SSL 465, IPv4) Transporter инициализирован для ${user}`);
-      } else if (host) {
-        this.transporter = nodemailer.createTransport({
-          host,
-          port,
-          secure,
-          auth: { user, pass },
-          family: 4,
-          tls: {
-            rejectUnauthorized: false,
-          },
-        } as nodemailer.TransportOptions);
-        this.logger.log(`📧 SMTP Transporter инициализирован (${host}:${port}, secure=${secure}, IPv4) для ${user}`);
-      }
-
-      if (this.transporter) {
-        this.transporter.verify((error) => {
-          if (error) {
-            this.logger.error(`❌ SMTP Verify Error (${user}): ${error.message}`);
-          } else {
-            this.logger.log(`✅ SMTP сервер успешно авторизован и готов к отправке писем!`);
-          }
-        });
-      }
+      this.transporter = this.createTransporter(host, port, secure, user, pass);
+      this.logger.log(`📧 SMTP (${host}:${port}, secure=${secure}, IPv4) Transporter инициализирован для ${user}`);
+      this.verifyAndFallback(host, port, secure, user, pass);
     } else {
       this.logger.warn(
         '⚠️ SMTP параметры не заданы (SMTP_USER, SMTP_PASS в .env). Письма будут логироваться в консоль.',
       );
     }
+  }
+
+  private createTransporter(
+    host: string,
+    port: number,
+    secure: boolean,
+    user: string,
+    pass: string,
+  ): nodemailer.Transporter {
+    return nodemailer.createTransport({
+      host,
+      port,
+      secure,
+      auth: { user, pass },
+      family: 4,
+      connectionTimeout: 8000,
+      greetingTimeout: 8000,
+      socketTimeout: 12000,
+      tls: {
+        rejectUnauthorized: false,
+      },
+    } as nodemailer.TransportOptions);
+  }
+
+  private verifyAndFallback(
+    host: string,
+    currentPort: number,
+    currentSecure: boolean,
+    user: string,
+    pass: string,
+  ) {
+    this.transporter?.verify((error) => {
+      if (error) {
+        this.logger.warn(`⚠️ Ошибка подключения к SMTP на порту ${currentPort}: ${error.message}`);
+        const fallbackPort = currentPort === 465 ? 587 : 465;
+        const fallbackSecure = fallbackPort === 465;
+
+        this.logger.log(`🔄 Пробуем резервный порт SMTP ${host}:${fallbackPort} (secure=${fallbackSecure})...`);
+        const fallbackTransporter = this.createTransporter(host, fallbackPort, fallbackSecure, user, pass);
+
+        fallbackTransporter.verify((fallbackError) => {
+          if (fallbackError) {
+            this.logger.error(`❌ Ошибка проверки резервного SMTP порта ${fallbackPort}: ${fallbackError.message}`);
+          } else {
+            this.transporter = fallbackTransporter;
+            this.logger.log(`✅ Резервный SMTP порт ${fallbackPort} успешно авторизован и готов к работе!`);
+          }
+        });
+      } else {
+        this.logger.log(`✅ SMTP сервер успешно авторизован на порту ${currentPort} и готов к отправке писем!`);
+      }
+    });
   }
 
   /**

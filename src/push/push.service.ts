@@ -45,25 +45,33 @@ export class PushService implements OnModuleInit {
           certObj.privateKey = certObj.privateKey.replace(/\\n/g, '\n');
         }
 
-        this.firebaseApp = initializeApp({
-          credential: cert(certObj),
-        });
-        this.logger.log('🔥 Firebase Admin SDK успешно инициализирован');
+        try {
+          this.firebaseApp = initializeApp({
+            credential: cert(certObj),
+          });
+          this.logger.log('🔥 Firebase Admin SDK успешно инициализирован');
+        } catch (certErr: any) {
+          this.logger.warn(`⚠️ Ошибка сертификата Firebase (${certErr.message}). Push-уведомления будут логироваться в консоль.`);
+        }
       } else if (fs.existsSync(defaultJsonPath)) {
-        const certObj = require(defaultJsonPath);
-        if (certObj?.private_key) {
-          certObj.private_key = certObj.private_key.replace(/\\n/g, '\n');
-        }
-        if (certObj?.privateKey) {
-          certObj.privateKey = certObj.privateKey.replace(/\\n/g, '\n');
-        }
+        try {
+          const certObj = require(defaultJsonPath);
+          if (certObj?.private_key) {
+            certObj.private_key = certObj.private_key.replace(/\\n/g, '\n');
+          }
+          if (certObj?.privateKey) {
+            certObj.privateKey = certObj.privateKey.replace(/\\n/g, '\n');
+          }
 
-        this.firebaseApp = initializeApp({
-          credential: cert(certObj),
-        });
-        this.logger.log(
-          '🔥 Firebase Admin SDK успешно инициализирован из firebase-adminsdk.json',
-        );
+          this.firebaseApp = initializeApp({
+            credential: cert(certObj),
+          });
+          this.logger.log(
+            '🔥 Firebase Admin SDK успешно инициализирован из firebase-adminsdk.json',
+          );
+        } catch (certErr: any) {
+          this.logger.warn(`⚠️ Ошибка сертификата firebase-adminsdk.json (${certErr.message}). Push-уведомления будут логироваться в консоль.`);
+        }
       } else if (projectId) {
         this.firebaseApp = initializeApp({
           projectId,
@@ -76,8 +84,8 @@ export class PushService implements OnModuleInit {
           '⚠️ FIREBASE_SERVICE_ACCOUNT не указан. Push-уведомления будут логироваться в консоль.',
         );
       }
-    } catch (err) {
-      this.logger.error('Ошибка инициализации Firebase Admin SDK:', err);
+    } catch (err: any) {
+      this.logger.warn(`⚠️ Firebase инициализация пропущена: ${err?.message}`);
     }
   }
 
