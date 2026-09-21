@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateClientLogDto } from './dto/create-client-log.dto';
-import { ulid } from 'ulid';
+import { randomUUID } from 'crypto';
 
 @Injectable()
 export class LogService {
@@ -15,7 +15,7 @@ export class LogService {
         `🚨 [Client Error] [${dto.source}] User: ${dto.userId || 'Guest'} (${dto.userEmail || 'no-email'}) - ${dto.message}`,
       );
 
-      const logId = ulid();
+      const logId = randomUUID();
       const log = await (this.prisma as any).clientErrorLog.create({
         data: {
           id: logId,
