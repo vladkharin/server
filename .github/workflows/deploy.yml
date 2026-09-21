@@ -1,52 +1,31 @@
-name: Messenger Backend Deploy
+name: Deploy Messenger Backend
 
 on:
   push:
-    branches:
-      - master
-      - main
+    branches: [ master ]
   workflow_dispatch:
 
 jobs:
-  build-and-deploy:
-    name: 🚀 Build Backend on GitHub & Deploy to VPS
+  deploy:
     runs-on: ubuntu-latest
-
     steps:
-      - name: 📥 Checkout repository
-        uses: actions/checkout@v4
-
-      - name: 🟢 Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Deploy to VPS via SSH
+        uses: appleboy/ssh-action@v1.2.0
         with:
-          node-version: 20
-          cache: 'npm'
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          password: ${{ secrets.VPS_PASSWORD }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          script_stop: true
+          script: |
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+            export PATH=$PATH:/usr/local/bin:$HOME/.local/bin
 
-      - name: 📦 Install dependencies
-        run: npm ci --legacy-peer-deps || npm install
-
-      - name: 🛠️ Build NestJS (on GitHub Actions 16GB RAM)
-        run: |
-          npm run build
-          tar -czf backend-build.tar.gz dist prisma package.json package-lock.json
-
-      - name: 🚚 Stream & Deploy to VPS over SSH
-        env:
-          SSHPASS: ${{ secrets.SERVER_PASSWORD }}
-          HOST: ${{ secrets.SERVER_HOST }}
-          USER: ${{ secrets.SERVER_USER }}
-          PORT: ${{ secrets.SERVER_PORT || 22 }}
-        run: |
-          sudo apt-get update -y && sudo apt-get install -y sshpass
-
-          # Прямая передача через SSH pipe в tar
-          cat backend-build.tar.gz | sshpass -e ssh -o StrictHostKeyChecking=no -p $PORT $USER@$HOST "
-            mkdir -p ~/projects/messenger-backend &&
-            cd ~/projects/messenger-backend &&
-            tar -xzf - &&
-            npm install --production --prefer-offline || true &&
-            npx prisma generate || true &&
-            npx prisma db push --skip-generate || true &&
-            pm2 restart messenger-server || pm2 start dist/main.js --name 'messenger-server' &&
-            echo '✅ Messenger Backend deployed successfully!'
-          "
+            cd ~/projects/messenger-backend
+            git fetch origin master
+            git reset --hard origin/master
+            npm install
+            npm run build
+            pm2 restart messenger-server || pm2 start dist/main.js --name messenger-server
