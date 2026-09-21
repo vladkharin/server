@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateClientLogDto } from './dto/create-client-log.dto';
+import { ulid } from 'ulid';
 
 @Injectable()
 export class LogService {
@@ -14,8 +15,10 @@ export class LogService {
         `🚨 [Client Error] [${dto.source}] User: ${dto.userId || 'Guest'} (${dto.userEmail || 'no-email'}) - ${dto.message}`,
       );
 
+      const logId = ulid();
       const log = await (this.prisma as any).clientErrorLog.create({
         data: {
+          id: logId,
           userId: dto.userId ? Number(dto.userId) : null,
           userEmail: dto.userEmail || null,
           source: dto.source || 'unknown',
@@ -26,7 +29,7 @@ export class LogService {
         },
       });
 
-      return { success: true, id: log.id };
+      return { success: true, id: log?.id || logId };
     } catch (err) {
       this.logger.error('Failed to save client error log:', err);
       return { success: false };

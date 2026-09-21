@@ -1,5 +1,5 @@
 model ClientErrorLog {
-  id             String   @id @default(ulid())
+  id             String   @id @default(uuid())
   userId         Int?
   userEmail      String?
   source         String   // "webrtc", "webrtc_mic", "socket", "react", "unhandled_rejection", "api"
