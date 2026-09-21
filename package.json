@@ -22,7 +22,7 @@
     "prisma:migrate": "npm run prisma:build && prisma migrate dev",
     "prisma:push": "npm run prisma:build && prisma db push",
     "build": "npm run prisma:build && npx prisma generate && npx nest build",
-    "start:prod": "npm run prisma:build && npx prisma migrate deploy && node dist/main"
+    "start:prod": "npm run prisma:build && npx prisma db push --skip-generate && node dist/main"
   },
   "dependencies": {
     "@nestjs/cli": "^11.0.0",
