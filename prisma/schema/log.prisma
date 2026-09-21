@@ -1,0 +1,15 @@
+model ClientErrorLog {
+  id             String   @id @default(ulid())
+  userId         Int?
+  userEmail      String?
+  source         String   // "webrtc", "webrtc_mic", "socket", "react", "unhandled_rejection", "api"
+  message        String
+  stack          String?  @db.Text
+  context        Json?    // { browser, os, device, conversationId, iceState, transportState, etc. }
+  url            String?
+  createdAt      DateTime @default(now())
+
+  @@index([source])
+  @@index([createdAt])
+  @@map("client_error_logs")
+}

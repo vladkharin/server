@@ -14,6 +14,7 @@ import { PushModule } from './push/push.module';
 import { UploadModule } from './upload/upload.module';
 import { ServerCommunityModule } from './server-community/server-community.module';
 import { EmailModule } from './email/email.module';
+import { LogModule } from './log/log.module';
 const envFilePath = path.resolve(__dirname, '../.env');
 
 @Module({
@@ -23,6 +24,7 @@ const envFilePath = path.resolve(__dirname, '../.env');
       isGlobal: true,
     }),
     EmailModule,
+    LogModule,
     UserModule,
     AuthModule,
     DmModule,
