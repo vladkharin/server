@@ -201,6 +201,13 @@ export class ServerCommunityService {
     serverId: number,
     name: string,
     type: 'SERVER_CHANNEL' | 'SERVER_VOICE' = 'SERVER_CHANNEL',
+    options?: {
+      category?: string;
+      topic?: string;
+      slowmode?: number;
+      isAnnouncement?: boolean;
+      isPrivate?: boolean;
+    },
   ) {
     const member = await this.prisma.serverMember.findUnique({
       where: { userId_serverId: { userId, serverId } },
@@ -216,6 +223,11 @@ export class ServerCommunityService {
         type,
         serverId,
         ownerId: userId,
+        category: options?.category || (type === 'SERVER_VOICE' ? 'ГОЛОСОВЫЕ КАНАЛЫ' : 'ТЕКСТОВЫЕ КАНАЛЫ'),
+        topic: options?.topic?.trim() || null,
+        slowmode: options?.slowmode ? Number(options.slowmode) : 0,
+        isAnnouncement: Boolean(options?.isAnnouncement),
+        isPrivate: Boolean(options?.isPrivate),
       },
     });
 
@@ -236,62 +248,18 @@ export class ServerCommunityService {
     return channel;
   }
 
-  async deleteServer(userId: number, serverId: number) {
-    const server = await this.prisma.server.findUnique({
-      where: { id: serverId },
-    });
-
-    if (!server) {
-      throw new NotFoundException('Сервер не найден');
-    }
-
-    if (server.ownerId !== userId) {
-      throw new BadRequestException('Удалить сервер может только его создатель/владелец');
-    }
-
-    await this.prisma.server.delete({
-      where: { id: serverId },
-    });
-
-    return { success: true, serverId };
-  }
-
-  async leaveServer(userId: number, serverId: number) {
-    const server = await this.prisma.server.findUnique({
-      where: { id: serverId },
-      include: { channels: true },
-    });
-
-    if (!server) {
-      throw new NotFoundException('Сервер не найден');
-    }
-
-    if (server.ownerId === userId) {
-      throw new BadRequestException('Владелец не может покинуть сервер. Вы можете только удалить его.');
-    }
-
-    await this.prisma.serverMember.deleteMany({
-      where: { userId, serverId },
-    });
-
-    // Удаляем из всех каналов сервера
-    const channelIds = server.channels.map((c) => c.id);
-    if (channelIds.length > 0) {
-      await this.prisma.conversationMember.deleteMany({
-        where: {
-          userId,
-          conversationId: { in: channelIds },
-        },
-      });
-    }
-
-    return { success: true, serverId };
-  }
-
   async updateChannel(
     userId: number,
     channelId: number,
-    data: { name?: string; type?: 'SERVER_CHANNEL' | 'SERVER_VOICE' },
+    data: {
+      name?: string;
+      type?: 'SERVER_CHANNEL' | 'SERVER_VOICE';
+      category?: string;
+      topic?: string;
+      slowmode?: number;
+      isAnnouncement?: boolean;
+      isPrivate?: boolean;
+    },
   ) {
     const channel = await this.prisma.conversation.findUnique({
       where: { id: channelId },
@@ -314,6 +282,58 @@ export class ServerCommunityService {
       data: {
         ...(data.name && { name: data.name.trim() }),
         ...(data.type && { type: data.type }),
+        ...(data.category !== undefined && { category: data.category }),
+        ...(data.topic !== undefined && { topic: data.topic }),
+        ...(data.slowmode !== undefined && { slowmode: Number(data.slowmode) }),
+        ...(data.isAnnouncement !== undefined && { isAnnouncement: Boolean(data.isAnnouncement) }),
+        ...(data.isPrivate !== undefined && { isPrivate: Boolean(data.isPrivate) }),
+      },
+    });
+
+    return updated;
+  }
+
+  async updateMemberRole(
+    userId: number,
+    serverId: number,
+    targetUserId: number,
+    newRole: string,
+    roleData?: { roleName?: string; roleColor?: string },
+  ) {
+    const currentMember = await this.prisma.serverMember.findUnique({
+      where: { userId_serverId: { userId, serverId } },
+    });
+
+    if (!currentMember || currentMember.role !== 'OWNER') {
+      throw new BadRequestException('Только владелец сервера может изменять роли');
+    }
+
+    const targetMember = await this.prisma.serverMember.findUnique({
+      where: { userId_serverId: { userId: targetUserId, serverId } },
+    });
+
+    if (!targetMember) {
+      throw new NotFoundException('Участник не найден');
+    }
+
+    if (targetMember.role === 'OWNER') {
+      throw new BadRequestException('Нельзя изменить роль владельца сервера');
+    }
+
+    const validRoles = ['ADMIN', 'MEMBER'];
+    if (!validRoles.includes(newRole)) {
+      throw new BadRequestException('Недопустимая роль. Доступны: ADMIN, MEMBER');
+    }
+
+    const updated = await this.prisma.serverMember.update({
+      where: { userId_serverId: { userId: targetUserId, serverId } },
+      data: {
+        role: newRole,
+        ...(roleData?.roleName && { roleName: roleData.roleName }),
+        ...(roleData?.roleColor && { roleColor: roleData.roleColor }),
+      },
+      include: {
+        user: { select: { id: true, username: true, avatar: true } },
       },
     });
 
@@ -435,46 +455,56 @@ export class ServerCommunityService {
     return updated;
   }
 
-  async updateMemberRole(
-    userId: number,
-    serverId: number,
-    targetUserId: number,
-    newRole: string,
-  ) {
-    const currentMember = await this.prisma.serverMember.findUnique({
-      where: { userId_serverId: { userId, serverId } },
+  async deleteServer(userId: number, serverId: number) {
+    const server = await this.prisma.server.findUnique({
+      where: { id: serverId },
     });
 
-    if (!currentMember || currentMember.role !== 'OWNER') {
-      throw new BadRequestException('Только владелец сервера может изменять роли');
+    if (!server) {
+      throw new NotFoundException('Сервер не найден');
     }
 
-    const targetMember = await this.prisma.serverMember.findUnique({
-      where: { userId_serverId: { userId: targetUserId, serverId } },
+    if (server.ownerId !== userId) {
+      throw new BadRequestException('Удалить сервер может только его создатель/владелец');
+    }
+
+    await this.prisma.server.delete({
+      where: { id: serverId },
     });
 
-    if (!targetMember) {
-      throw new NotFoundException('Участник не найден');
-    }
+    return { success: true, serverId };
+  }
 
-    if (targetMember.role === 'OWNER') {
-      throw new BadRequestException('Нельзя изменить роль владельца сервера');
-    }
-
-    const validRoles = ['ADMIN', 'MEMBER'];
-    if (!validRoles.includes(newRole)) {
-      throw new BadRequestException('Недопустимая роль. Доступны: ADMIN, MEMBER');
-    }
-
-    const updated = await this.prisma.serverMember.update({
-      where: { userId_serverId: { userId: targetUserId, serverId } },
-      data: { role: newRole },
-      include: {
-        user: { select: { id: true, username: true, avatar: true } },
-      },
+  async leaveServer(userId: number, serverId: number) {
+    const server = await this.prisma.server.findUnique({
+      where: { id: serverId },
+      include: { channels: true },
     });
 
-    return updated;
+    if (!server) {
+      throw new NotFoundException('Сервер не найден');
+    }
+
+    if (server.ownerId === userId) {
+      throw new BadRequestException('Владелец не может покинуть сервер. Вы можете только удалить его.');
+    }
+
+    await this.prisma.serverMember.deleteMany({
+      where: { userId, serverId },
+    });
+
+    // Удаляем из всех каналов сервера
+    const channelIds = server.channels.map((c) => c.id);
+    if (channelIds.length > 0) {
+      await this.prisma.conversationMember.deleteMany({
+        where: {
+          userId,
+          conversationId: { in: channelIds },
+        },
+      });
+    }
+
+    return { success: true, serverId };
   }
 
   async kickMember(userId: number, serverId: number, targetUserId: number) {

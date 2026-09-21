@@ -131,6 +131,50 @@ export class MessageService implements OnModuleInit {
       throw new Error('У вас нет доступа к этому чату');
     }
 
+    // 2.1 Проверка прав для каналов объявлений и медленного режима
+    const conversationInfo = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { serverId: true, isAnnouncement: true, slowmode: true },
+    });
+
+    if (conversationInfo?.serverId) {
+      const serverMember = await this.prisma.serverMember.findUnique({
+        where: {
+          userId_serverId: {
+            userId,
+            serverId: conversationInfo.serverId,
+          },
+        },
+      });
+
+      const isStaff = serverMember?.role === 'OWNER' || serverMember?.role === 'ADMIN';
+
+      // Проверка канала объявлений
+      if (conversationInfo.isAnnouncement && !isStaff) {
+        throw new Error('В канале объявлений писать могут только администраторы');
+      }
+
+      // Проверка медленного режима (для обычных участников)
+      if (conversationInfo.slowmode && conversationInfo.slowmode > 0 && !isStaff) {
+        const lastMsg = await this.prisma.message.findFirst({
+          where: {
+            conversationId,
+            senderId: userId,
+          },
+          orderBy: { createdAt: 'desc' },
+          select: { createdAt: true },
+        });
+
+        if (lastMsg) {
+          const diffSeconds = (Date.now() - new Date(lastMsg.createdAt).getTime()) / 1000;
+          if (diffSeconds < conversationInfo.slowmode) {
+            const waitSeconds = Math.ceil(conversationInfo.slowmode - diffSeconds);
+            throw new Error(`Медленный режим: подождите ${waitSeconds}с перед отправкой сообщения`);
+          }
+        }
+      }
+    }
+
     // Вычисление времени самоуничтожения
     const expiresAt = dto.expiresInSeconds
       ? new Date(Date.now() + dto.expiresInSeconds * 1000)
@@ -140,7 +184,7 @@ export class MessageService implements OnModuleInit {
     let content = dto.content || '';
     if (!content) {
       if (dto.imageUrl) content = '📷 Фотография';
-      else if (dto.fileType === 'audio') content = '🎙️ Голосовое сообщение';
+      else if (dto.fileType === 'audio' || dto.fileType === 'voice') content = '🎙️ Голосовое сообщение';
       else if (dto.fileUrl) content = `📎 ${dto.fileName || 'Файл'}`;
     }
 

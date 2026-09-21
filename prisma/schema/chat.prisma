@@ -7,6 +7,13 @@ model Conversation {
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
 
+    // Тема, категория и настройки канала
+    topic          String? // Описание/тема канала
+    category       String?   @default("ОБЩИЕ") // Категория/группа каналов
+    slowmode       Int       @default(0) // Задержка между сообщениями в секундах (0 = выключено)
+    isAnnouncement Boolean   @default(false) // Только администраторы могут писать
+    isPrivate      Boolean   @default(false) // Доступ только по ролям/приглашению
+
     // Для DIRECT: хэш вида "minId-maxId" → гарантирует уникальность пары
     dmHash String? @unique
 
@@ -51,8 +58,10 @@ model Message {
     fileUrl        String?
     fileName       String?
     fileSize       Int?
-    fileType       String? // 'image', 'audio', 'video', 'document'
+    fileType       String? // 'image', 'audio', 'video', 'document', 'voice'
     audioDuration  Int? // в секундах
+    audioUrl       String? // URL аудиофайла голосового сообщения
+    waveform       String? // JSON массив амплитуд для визуализации волны
     isPinned       Boolean   @default(false)
     expiresAt      DateTime? // для самоуничтожающихся сообщений
     editedAt       DateTime?
@@ -60,23 +69,43 @@ model Message {
     replyToId      Int?
     replyTo        Message?  @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
     replies        Message[] @relation("MessageReplies")
-    createdAt      DateTime  @default(now())
-    senderId       Int
+
     conversationId Int
+    conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
-    sender       User         @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
-    conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+    senderId Int
+    sender   User @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+
     reactions    Reaction[]
+    readReceipts MessageReadReceipt[]
 
-    pinnedIn Conversation? @relation("ConversationPinnedMessage")
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    pinnedInConversation Conversation? @relation("ConversationPinnedMessage")
+
+    @@index([conversationId, createdAt])
+}
+
+// =============== ЧТЕНИЕ СООБЩЕНИЙ ===============
+model MessageReadReceipt {
+    id        Int      @id @default(autoincrement())
+    messageId Int
+    userId    Int
+    readAt    DateTime @default(now())
+
+    message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+    user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    @@unique([messageId, userId])
 }
 
 // =============== РЕАКЦИИ ===============
 model Reaction {
     id        Int      @id @default(autoincrement())
     messageId Int
-    message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
     userId    Int
+    message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
     user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
     emoji     String
     createdAt DateTime @default(now())
@@ -100,11 +129,13 @@ model Server {
 }
 
 model ServerMember {
-    id       Int      @id @default(autoincrement())
-    userId   Int
-    serverId Int
-    role     String   @default("MEMBER") // OWNER, ADMIN, MEMBER
-    joinedAt DateTime @default(now())
+    id        Int      @id @default(autoincrement())
+    userId    Int
+    serverId  Int
+    role      String   @default("MEMBER") // OWNER, ADMIN, MEMBER
+    roleName  String?  @default("Участник")
+    roleColor String?  @default("#94a3b8")
+    joinedAt  DateTime @default(now())
 
     user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
     server Server @relation(fields: [serverId], references: [id], onDelete: Cascade)

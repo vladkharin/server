@@ -143,6 +143,11 @@ export class ServerCommunityGateway {
       serverId: number;
       name: string;
       type?: 'SERVER_CHANNEL' | 'SERVER_VOICE';
+      category?: string;
+      topic?: string;
+      slowmode?: number;
+      isAnnouncement?: boolean;
+      isPrivate?: boolean;
       id?: string;
     },
     @ConnectedSocket() client: Socket & { user: { id: number } },
@@ -154,6 +159,13 @@ export class ServerCommunityGateway {
         data.serverId,
         data.name,
         data.type,
+        {
+          category: data.category,
+          topic: data.topic,
+          slowmode: data.slowmode,
+          isAnnouncement: data.isAnnouncement,
+          isPrivate: data.isPrivate,
+        },
       );
 
       this.server
@@ -233,6 +245,11 @@ export class ServerCommunityGateway {
       channelId: number;
       name?: string;
       type?: 'SERVER_CHANNEL' | 'SERVER_VOICE';
+      category?: string;
+      topic?: string;
+      slowmode?: number;
+      isAnnouncement?: boolean;
+      isPrivate?: boolean;
       id?: string;
     },
     @ConnectedSocket() client: Socket & { user: { id: number } },
@@ -242,7 +259,15 @@ export class ServerCommunityGateway {
       const channel = await this.serverCommunityService.updateChannel(
         userId,
         data.channelId,
-        { name: data.name, type: data.type },
+        {
+          name: data.name,
+          type: data.type,
+          category: data.category,
+          topic: data.topic,
+          slowmode: data.slowmode,
+          isAnnouncement: data.isAnnouncement,
+          isPrivate: data.isPrivate,
+        },
       );
 
       if (channel.serverId) {
