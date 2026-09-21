@@ -287,5 +287,42 @@ export class CallGateway {
       };
     }
   }
+
+  // --- 6. ИНТЕРАКТИВ (Поднятие руки & Всплывающие реакции) ---
+
+  @SubscribeMessage('voice:raiseHand')
+  handleRaiseHand(
+    @MessageBody() data: { conversationId: number; isRaised: boolean; id?: string },
+    @ConnectedSocket() client: Socket & { user?: { id: number } },
+  ) {
+    const userId = client.user?.id;
+    if (!userId) return { error: 'Unauthorized', id: data.id };
+
+    this.server.to(`chat:${data.conversationId}`).emit('voice:handRaised', {
+      conversationId: data.conversationId,
+      userId,
+      isRaised: Boolean(data.isRaised),
+    });
+
+    return { response: { success: true, userId, isRaised: data.isRaised }, id: data.id };
+  }
+
+  @SubscribeMessage('voice:reaction')
+  handleVoiceReaction(
+    @MessageBody() data: { conversationId: number; emoji: string; id?: string },
+    @ConnectedSocket() client: Socket & { user?: { id: number } },
+  ) {
+    const userId = client.user?.id;
+    if (!userId) return { error: 'Unauthorized', id: data.id };
+
+    this.server.to(`chat:${data.conversationId}`).emit('voice:reactionReceived', {
+      conversationId: data.conversationId,
+      userId,
+      emoji: data.emoji,
+      timestamp: Date.now(),
+    });
+
+    return { response: { success: true }, id: data.id };
+  }
 }
 

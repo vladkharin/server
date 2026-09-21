@@ -80,16 +80,21 @@ export class ServerCommunityService {
       },
     });
 
-    return memberships.map((m) => ({
-      id: m.server.id,
-      name: m.server.name,
-      icon: m.server.icon,
-      ownerId: m.server.ownerId,
-      inviteCode: m.server.inviteCode,
-      channels: m.server.channels,
-      membersCount: m.server._count.members,
-      role: m.role,
-    }));
+    return memberships.map((m) => {
+      const isServerAdmin = m.role === 'OWNER' || m.role === 'ADMIN';
+      const visibleChannels = m.server.channels.filter((c) => !c.isPrivate || isServerAdmin);
+
+      return {
+        id: m.server.id,
+        name: m.server.name,
+        icon: m.server.icon,
+        ownerId: m.server.ownerId,
+        inviteCode: m.server.inviteCode,
+        channels: visibleChannels,
+        membersCount: m.server._count.members,
+        role: m.role,
+      };
+    });
   }
 
   async getServer(serverId: number, userId: number) {
@@ -128,7 +133,14 @@ export class ServerCommunityService {
     });
 
     if (!server) throw new NotFoundException('Сервер не найден');
-    return server;
+
+    const isServerAdmin = member.role === 'OWNER' || member.role === 'ADMIN';
+    const visibleChannels = server.channels.filter((c) => !c.isPrivate || isServerAdmin);
+
+    return {
+      ...server,
+      channels: visibleChannels,
+    };
   }
 
   async getInviteInfo(inviteCode: string) {
