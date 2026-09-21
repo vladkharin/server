@@ -74,35 +74,43 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         })
         .catch(() => {});
 
-      // Вход в комнаты
-      await client.join(`user:${user.id}`);
-      const conversations = await this.prisma.conversationMember.findMany({
-        where: { userId: user.id },
-        select: { conversationId: true },
-      });
+      // Вход в комнаты личных сообщений и групп
+      try {
+        await client.join(`user:${user.id}`);
+        const conversations = await this.prisma.conversationMember.findMany({
+          where: { userId: user.id },
+          select: { conversationId: true },
+        });
 
-      for (const member of conversations) {
-        await client.join(`chat:${member.conversationId}`);
+        for (const member of conversations) {
+          await client.join(`chat:${member.conversationId}`);
+        }
+      } catch (err) {
+        console.warn(`[Socket] Failed to join conversation rooms for user ${user.id}:`, err);
       }
 
       // Также подключаем ко всем каналам серверов, на которых состоит пользователь
-      const userServers = await this.prisma.serverMember.findMany({
-        where: { userId: user.id },
-        include: {
-          server: {
-            include: {
-              channels: { select: { id: true } },
+      try {
+        const userServers = await this.prisma.serverMember.findMany({
+          where: { userId: user.id },
+          include: {
+            server: {
+              include: {
+                channels: { select: { id: true } },
+              },
             },
           },
-        },
-      });
+        });
 
-      for (const sm of userServers) {
-        if (sm.server?.channels) {
-          for (const ch of sm.server.channels) {
-            await client.join(`chat:${ch.id}`);
+        for (const sm of userServers) {
+          if (sm.server?.channels) {
+            for (const ch of sm.server.channels) {
+              await client.join(`chat:${ch.id}`);
+            }
           }
         }
+      } catch (err) {
+        console.warn(`[Socket] Failed to join server channels for user ${user.id}:`, err);
       }
 
       // Оповещаем всех клиентов об онлайн-статусе
