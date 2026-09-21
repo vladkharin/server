@@ -4,33 +4,43 @@ import * as mediasoup from 'mediasoup';
 @Injectable()
 export class MediasoupService implements OnModuleInit {
   private worker!: mediasoup.types.Worker;
+  private isInitializing = false;
 
   async onModuleInit() {
-    this.worker = (await mediasoup.createWorker({
-      logLevel: 'debug',
-      logTags: [
-        'info',
-        'ice',
-        'dtls',
-        'rtp',
-        'srtp',
-        'rtcp',
-        'transport',
-        'worker',
-      ],
-      rtcMinPort: 40000,
-      rtcMaxPort: 40100,
-    })) as unknown as mediasoup.types.Worker;
+    await this.initWorker();
+  }
 
-    this.worker.on('died', () => {
-      console.error('Mediasoup worker died!');
-      process.exit(1);
-    });
+  private async initWorker() {
+    if (this.isInitializing) return;
+    this.isInitializing = true;
+    try {
+      this.worker = (await mediasoup.createWorker({
+        logLevel: 'warn',
+        rtcMinPort: 40000,
+        rtcMaxPort: 40100,
+      })) as unknown as mediasoup.types.Worker;
 
-    console.log('✅ Mediasoup worker ready');
+      this.worker.on('died', () => {
+        console.error('⚠️ Mediasoup worker died! Recreating worker...');
+        setTimeout(() => {
+          this.initWorker().catch((err) => {
+            console.error('Failed to recreate Mediasoup worker:', err);
+          });
+        }, 1000);
+      });
+
+      console.log('✅ Mediasoup worker ready');
+    } catch (err) {
+      console.error('❌ Failed to initialize Mediasoup worker:', err);
+    } finally {
+      this.isInitializing = false;
+    }
   }
 
   async createRouter(): Promise<mediasoup.types.Router> {
+    if (!this.worker) {
+      await this.initWorker();
+    }
     return await this.worker.createRouter({
       mediaCodecs: [
         {
@@ -52,9 +62,9 @@ export class MediasoupService implements OnModuleInit {
   async createWebRtcTransport(
     router: mediasoup.types.Router,
   ): Promise<mediasoup.types.WebRtcTransport> {
+    const announcedIp = process.env.MEDIASOUP_ANNOUNCED_IP || '185.46.11.122';
     return await router.createWebRtcTransport({
-      // : '127.0.0.1'
-      listenIps: [{ ip: '0.0.0.0', announcedIp: '185.46.11.122' }],
+      listenIps: [{ ip: '0.0.0.0', announcedIp }],
       enableUdp: true,
       enableTcp: true,
       preferUdp: true,
