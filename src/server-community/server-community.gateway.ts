@@ -323,4 +323,150 @@ export class ServerCommunityGateway {
       };
     }
   }
+
+  @SubscribeMessage(REQUESTS.serverUpdate)
+  async handleServerUpdate(
+    @MessageBody()
+    data: {
+      serverId: number;
+      name?: string;
+      icon?: string;
+      id?: string;
+    },
+    @ConnectedSocket() client: Socket & { user: { id: number } },
+  ) {
+    const userId = client.user.id;
+    try {
+      const updated = await this.serverCommunityService.updateServer(
+        userId,
+        data.serverId,
+        { name: data.name, icon: data.icon },
+      );
+
+      this.server
+        .to(`server:${data.serverId}`)
+        .emit(NOTIFICATIONS.serverUpdated, {
+          serverId: data.serverId,
+          server: updated,
+        });
+
+      return {
+        status: 'ok',
+        response: updated,
+        id: data.id,
+      };
+    } catch (error: any) {
+      return {
+        error: error?.message || 'Error updating server',
+        id: data.id,
+      };
+    }
+  }
+
+  @SubscribeMessage(REQUESTS.serverMemberRoleUpdate)
+  async handleServerMemberRoleUpdate(
+    @MessageBody()
+    data: {
+      serverId: number;
+      targetUserId: number;
+      newRole: string;
+      id?: string;
+    },
+    @ConnectedSocket() client: Socket & { user: { id: number } },
+  ) {
+    const userId = client.user.id;
+    try {
+      const updated = await this.serverCommunityService.updateMemberRole(
+        userId,
+        data.serverId,
+        data.targetUserId,
+        data.newRole,
+      );
+
+      this.server
+        .to(`server:${data.serverId}`)
+        .emit(NOTIFICATIONS.serverMemberUpdated, {
+          serverId: data.serverId,
+          member: updated,
+        });
+
+      return {
+        status: 'ok',
+        response: updated,
+        id: data.id,
+      };
+    } catch (error: any) {
+      return {
+        error: error?.message || 'Error updating member role',
+        id: data.id,
+      };
+    }
+  }
+
+  @SubscribeMessage(REQUESTS.serverMemberKick)
+  async handleServerMemberKick(
+    @MessageBody()
+    data: {
+      serverId: number;
+      targetUserId: number;
+      id?: string;
+    },
+    @ConnectedSocket() client: Socket & { user: { id: number } },
+  ) {
+    const userId = client.user.id;
+    try {
+      const result = await this.serverCommunityService.kickMember(
+        userId,
+        data.serverId,
+        data.targetUserId,
+      );
+
+      this.server
+        .to(`server:${data.serverId}`)
+        .emit(NOTIFICATIONS.serverMemberKicked, {
+          serverId: data.serverId,
+          targetUserId: data.targetUserId,
+        });
+
+      return {
+        status: 'ok',
+        response: result,
+        id: data.id,
+      };
+    } catch (error: any) {
+      return {
+        error: error?.message || 'Error kicking member',
+        id: data.id,
+      };
+    }
+  }
+
+  @SubscribeMessage(REQUESTS.serverInviteRegenerate)
+  async handleServerInviteRegenerate(
+    @MessageBody()
+    data: {
+      serverId: number;
+      id?: string;
+    },
+    @ConnectedSocket() client: Socket & { user: { id: number } },
+  ) {
+    const userId = client.user.id;
+    try {
+      const result = await this.serverCommunityService.regenerateInviteCode(
+        userId,
+        data.serverId,
+      );
+
+      return {
+        status: 'ok',
+        response: result,
+        id: data.id,
+      };
+    } catch (error: any) {
+      return {
+        error: error?.message || 'Error regenerating invite code',
+        id: data.id,
+      };
+    }
+  }
 }

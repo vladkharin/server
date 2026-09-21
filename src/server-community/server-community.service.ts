@@ -398,4 +398,149 @@ export class ServerCommunityService {
       joinedAt: m.joinedAt,
     }));
   }
+
+  async updateServer(
+    userId: number,
+    serverId: number,
+    data: { name?: string; icon?: string },
+  ) {
+    const member = await this.prisma.serverMember.findUnique({
+      where: { userId_serverId: { userId, serverId } },
+    });
+
+    if (!member || (member.role !== 'OWNER' && member.role !== 'ADMIN')) {
+      throw new BadRequestException('У вас нет прав для изменения настроек сервера');
+    }
+
+    if (data.name && data.name.trim().length === 0) {
+      throw new BadRequestException('Название сервера не может быть пустым');
+    }
+
+    const updated = await this.prisma.server.update({
+      where: { id: serverId },
+      data: {
+        ...(data.name && { name: data.name.trim() }),
+        ...(data.icon !== undefined && { icon: data.icon }),
+      },
+      include: {
+        channels: true,
+        members: {
+          include: {
+            user: { select: { id: true, username: true, avatar: true } },
+          },
+        },
+      },
+    });
+
+    return updated;
+  }
+
+  async updateMemberRole(
+    userId: number,
+    serverId: number,
+    targetUserId: number,
+    newRole: string,
+  ) {
+    const currentMember = await this.prisma.serverMember.findUnique({
+      where: { userId_serverId: { userId, serverId } },
+    });
+
+    if (!currentMember || currentMember.role !== 'OWNER') {
+      throw new BadRequestException('Только владелец сервера может изменять роли');
+    }
+
+    const targetMember = await this.prisma.serverMember.findUnique({
+      where: { userId_serverId: { userId: targetUserId, serverId } },
+    });
+
+    if (!targetMember) {
+      throw new NotFoundException('Участник не найден');
+    }
+
+    if (targetMember.role === 'OWNER') {
+      throw new BadRequestException('Нельзя изменить роль владельца сервера');
+    }
+
+    const validRoles = ['ADMIN', 'MEMBER'];
+    if (!validRoles.includes(newRole)) {
+      throw new BadRequestException('Недопустимая роль. Доступны: ADMIN, MEMBER');
+    }
+
+    const updated = await this.prisma.serverMember.update({
+      where: { userId_serverId: { userId: targetUserId, serverId } },
+      data: { role: newRole },
+      include: {
+        user: { select: { id: true, username: true, avatar: true } },
+      },
+    });
+
+    return updated;
+  }
+
+  async kickMember(userId: number, serverId: number, targetUserId: number) {
+    const currentMember = await this.prisma.serverMember.findUnique({
+      where: { userId_serverId: { userId, serverId } },
+    });
+
+    if (!currentMember || (currentMember.role !== 'OWNER' && currentMember.role !== 'ADMIN')) {
+      throw new BadRequestException('У вас нет прав для исключения участников');
+    }
+
+    const targetMember = await this.prisma.serverMember.findUnique({
+      where: { userId_serverId: { userId: targetUserId, serverId } },
+    });
+
+    if (!targetMember) {
+      throw new NotFoundException('Участник не найден');
+    }
+
+    if (targetMember.role === 'OWNER') {
+      throw new BadRequestException('Нельзя исключить владельца сервера');
+    }
+
+    if (currentMember.role === 'ADMIN' && targetMember.role === 'ADMIN') {
+      throw new BadRequestException('Администратор не может исключить другого администратора');
+    }
+
+    await this.prisma.serverMember.delete({
+      where: { userId_serverId: { userId: targetUserId, serverId } },
+    });
+
+    const server = await this.prisma.server.findUnique({
+      where: { id: serverId },
+      include: { channels: true },
+    });
+
+    if (server && server.channels.length > 0) {
+      const channelIds = server.channels.map((c) => c.id);
+      await this.prisma.conversationMember.deleteMany({
+        where: {
+          userId: targetUserId,
+          conversationId: { in: channelIds },
+        },
+      });
+    }
+
+    return { success: true, serverId, targetUserId };
+  }
+
+  async regenerateInviteCode(userId: number, serverId: number) {
+    const member = await this.prisma.serverMember.findUnique({
+      where: { userId_serverId: { userId, serverId } },
+    });
+
+    if (!member || (member.role !== 'OWNER' && member.role !== 'ADMIN')) {
+      throw new BadRequestException('У вас нет прав для обновления ссылки-приглашения');
+    }
+
+    const { randomUUID } = await import('crypto');
+    const newCode = randomUUID();
+
+    const updated = await this.prisma.server.update({
+      where: { id: serverId },
+      data: { inviteCode: newCode },
+    });
+
+    return { success: true, serverId, inviteCode: updated.inviteCode };
+  }
 }
