@@ -8,7 +8,7 @@ enum FriendStatus {
 model Friend {
   id        Int      @id @default(autoincrement())
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime @default(now()) @updatedAt
 
   senderId   Int
   receiverId Int
@@ -105,7 +105,7 @@ model DeviceToken {
   token     String   @unique
   platform  String? // 'web', 'android', 'desktop'
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime @default(now()) @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

@@ -5,7 +5,7 @@ model Conversation {
     avatar    String? // URL аватара чата
     ownerId   Int? // только для GROUP/SERVER (создатель)
     createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+    updatedAt DateTime @default(now()) @updatedAt
 
     // Тема, категория и настройки канала
     topic          String? // Описание/тема канала
@@ -80,7 +80,7 @@ model Message {
     readReceipts MessageReadReceipt[]
 
     createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+    updatedAt DateTime @default(now()) @updatedAt
 
     pinnedInConversation Conversation? @relation("ConversationPinnedMessage")
 
@@ -122,7 +122,7 @@ model Server {
     owner      User     @relation("ServerOwner", fields: [ownerId], references: [id], onDelete: Cascade)
     inviteCode String   @unique @default(uuid())
     createdAt  DateTime @default(now())
-    updatedAt  DateTime @updatedAt
+    updatedAt  DateTime @default(now()) @updatedAt
 
     channels Conversation[]
     members  ServerMember[]
