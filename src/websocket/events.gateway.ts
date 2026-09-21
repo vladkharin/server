@@ -38,11 +38,19 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   async handleConnection(client: Socket) {
     const token = client.handshake.query?.token as string | undefined;
-    if (!token) return client.disconnect(true);
+    if (!token) {
+      console.warn(`[Socket] Disconnecting ${client.id}: No token provided`);
+      client.emit('auth:error', { message: 'No token provided' });
+      return client.disconnect(true);
+    }
 
     try {
       const user = await this.authService.validateToken(token);
-      if (!user) return client.disconnect(true);
+      if (!user) {
+        console.warn(`[Socket] Disconnecting ${client.id}: Invalid or expired token`);
+        client.emit('auth:error', { message: 'Invalid or expired token' });
+        return client.disconnect(true);
+      }
 
       client.user = user;
 
@@ -109,7 +117,9 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
       // Отправляем подключившемуся список ID всех онлайн пользователей
       client.emit('presence:online_users', this.presenceService.getOnlineUserIds());
-    } catch (_e) {
+    } catch (e) {
+      console.error(`[Socket] Error in handleConnection for ${client.id}:`, e);
+      client.emit('auth:error', { message: 'Connection error' });
       client.disconnect(true);
     }
   }
