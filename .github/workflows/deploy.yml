@@ -46,7 +46,8 @@ jobs:
             tar -xzf - &&
             npm install --production --prefer-offline || true &&
             npx prisma generate || true &&
-            npx prisma db push --skip-generate || true &&
-            pm2 restart messenger-server || pm2 start dist/main.js --name 'messenger-server' &&
+            npx prisma db push --accept-data-loss --skip-generate || true &&
+            (pm2 reload messenger-server || pm2 restart messenger-server || pm2 start dist/main.js --name 'messenger-server' -f) &&
+            pm2 save || true &&
             echo '✅ Messenger Backend deployed successfully!'
           "

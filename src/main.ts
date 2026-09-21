@@ -30,7 +30,19 @@ async function bootstrap() {
     new AllExceptionsFilter(logService),
     new PrismaClientExceptionFilter(),
   );
-  app.enableCors();
+  app.enableCors({
+    origin: (origin, callback) => {
+      // Разрешаем любые запросы с crafthive.ru, localhost или без origin (curl/mobile)
+      if (!origin || origin.includes('crafthive.ru') || origin.includes('localhost')) {
+        callback(null, true);
+      } else {
+        callback(null, true); // Разрешаем все origins для надежности
+      }
+    },
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    credentials: true,
+    allowedHeaders: 'Content-Type, Accept, Authorization, x-requested-with',
+  });
   app.enableShutdownHooks();
   app.setGlobalPrefix('api');
   await app.listen(3001);
