@@ -1,48 +1,52 @@
-name: Deploy Messenger Backend
+name: Messenger Backend Deploy
 
 on:
   push:
-    branches: [ master ]
+    branches:
+      - master
+      - main
   workflow_dispatch:
 
 jobs:
-  deploy:
+  build-and-deploy:
+    name: 🚀 Build Backend on GitHub & Deploy to VPS
     runs-on: ubuntu-latest
+
     steps:
-      - name: Deploy to VPS via SSH
-        uses: appleboy/ssh-action@v1.2.0
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          host: ${{ secrets.SERVER_HOST || secrets.VPS_HOST }}
-          username: ${{ secrets.SERVER_USER || secrets.VPS_USER }}
-          password: ${{ secrets.SERVER_PASSWORD || secrets.VPS_PASSWORD }}
-          key: ${{ secrets.SERVER_SSH_KEY || secrets.VPS_SSH_KEY }}
-          port: ${{ secrets.SERVER_PORT || secrets.VPS_PORT || 22 }}
-          script_stop: true
-          script: |
-            # Load environment paths
-            source ~/.bashrc 2>/dev/null || true
-            source ~/.profile 2>/dev/null || true
-            export NVM_DIR="$HOME/.nvm"
-            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-            export PATH=$PATH:/usr/local/bin:/usr/bin:$HOME/.local/bin:$HOME/.npm-global/bin
+          node-version: 20
+          cache: 'npm'
 
-            echo "=== Node & PM2 Info ==="
-            node -v || true
-            npm -v || true
-            pm2 -v || true
+      - name: 📦 Install dependencies
+        run: npm ci --legacy-peer-deps || npm install
 
-            echo "=== Updating Code ==="
-            cd ~/projects/messenger-backend || cd /home/vladkharin/projects/messenger-backend || cd /root/projects/messenger-backend
-            git fetch origin master
-            git reset --hard origin/master
+      - name: 🛠️ Build NestJS (on GitHub Actions 16GB RAM)
+        run: |
+          npm run build
+          tar -czf backend-build.tar.gz dist prisma package.json package-lock.json
 
-            echo "=== Installing Dependencies ==="
-            npm install
+      - name: 🚚 Stream & Deploy to VPS over SSH
+        env:
+          SSHPASS: ${{ secrets.SERVER_PASSWORD || secrets.VPS_PASSWORD }}
+          HOST: ${{ secrets.SERVER_HOST || secrets.VPS_HOST }}
+          USER: ${{ secrets.SERVER_USER || secrets.VPS_USER }}
+          PORT: ${{ secrets.SERVER_PORT || secrets.VPS_PORT || 22 }}
+        run: |
+          sudo apt-get update -y && sudo apt-get install -y sshpass
 
-            echo "=== Building Backend ==="
-            npm run build
-
-            echo "=== Restarting PM2 ==="
-            pm2 restart messenger-server || pm2 start dist/main.js --name messenger-server
-            pm2 save || true
-            echo "=== Deploy Complete! ==="
+          # Прямая передача через SSH pipe в tar
+          cat backend-build.tar.gz | sshpass -e ssh -o StrictHostKeyChecking=no -p $PORT $USER@$HOST "
+            mkdir -p ~/projects/messenger-backend &&
+            cd ~/projects/messenger-backend &&
+            tar -xzf - &&
+            npm install --production --prefer-offline || true &&
+            npx prisma generate || true &&
+            npx prisma db push --skip-generate || true &&
+            pm2 restart messenger-server || pm2 start dist/main.js --name 'messenger-server' &&
+            echo '✅ Messenger Backend deployed successfully!'
+          "
